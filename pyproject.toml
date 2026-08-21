@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hebbrix"
+version = "2.2.0"
+description = "Advanced Memory API for AI Agents with Reinforcement Learning - 3-line integration"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Hebbrix Team", email = "support@hebbrix.com"}
+]
+maintainers = [
+    {name = "Hebbrix Team", email = "support@hebbrix.com"}
+]
+keywords = [
+    "ai",
+    "memory",
+    "agents",
+    "llm",
+    "chatbot",
+    "assistant",
+    "ml",
+    "reinforcement-learning",
+    "knowledge-graph",
+    "vector-search",
+    "rag",
+    "temporal",
+    "procedural-memory",
+    "working-memory"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Database",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Framework :: AsyncIO",
+]
+dependencies = [
+    "httpx>=0.25.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://hebbrix.com"
+Documentation = "https://docs.hebbrix.com"
+Repository = "https://github.com/hebbrix/hebbrix-python"
+"Bug Tracker" = "https://github.com/hebbrix/hebbrix-python/issues"
+"API Reference" = "https://api.hebbrix.com/docs"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hebbrix*"]
+exclude = ["tests*", "memory_ai*", "memory_ai_sdk*"]
