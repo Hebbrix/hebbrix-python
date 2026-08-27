@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.4.1 — 2026-08-27
+
+- Make every async and sync readiness deadline preserve the original durable
+  receipt and raise top-level `IndexingTimeoutError`, including single writes,
+  batches, inference jobs, and direct updates.
+- Normalize memory/job/status/request/outbox/idempotency recovery metadata and
+  preserve transport-only `Location`, request, retry, event, and replay headers.
+
+## 2.4.0 — 2026-08-27
+
+- Reconcile every exported advanced method with the canonical public OpenAPI,
+  including temporal, working-memory, consolidation, memory-tool, and RL routes.
+- Add a route-manifest release gate and clean-wheel installation verification.
+- Treat durable-but-indexing batch results as `202`, poll them through the SDK,
+  and raise `IndexingTimeoutError` with the durable receipt on client deadline.
+- Preserve structured entitlement metadata in `EntitlementError`.
+- Keep advanced resources async-only and document the sync-client boundary.
+- Withdraw the experimental World Model from the public SDK until a trained,
+  versioned production model artifact and serving contract exist.
+- Publish compatibility through `GET /v1/release`; replace the broken public
+  repository link with valid artifact and support links.
+
 ## 2.3.2 — 2026-08-27
 
 - Align procedure create/list/get/update/execute/delete with the canonical

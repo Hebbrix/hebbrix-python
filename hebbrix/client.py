@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from hebbrix.exceptions import (
     AuthenticationError,
+    EntitlementError,
     HebbrixError,
     NotFoundError,
     RateLimitError,
@@ -30,7 +31,6 @@ from hebbrix.resources import (
     SearchResource,
     TemporalResource,
     WorkingMemoryResource,
-    WorldModelResource,
 )
 
 
@@ -85,13 +85,12 @@ class MemoryClient:
         self.working_memory = WorkingMemoryResource(self)
         self.consolidation = ConsolidationResource(self)
         self.memory_tools = MemoryToolsResource(self)
-        self.world_model = WorldModelResource(self)
 
     def _get_headers(self) -> Dict[str, str]:
         """Get request headers."""
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.3.2",
+            "User-Agent": "hebbrix-python/2.4.1",
         }
 
         if self.api_key:
@@ -108,23 +107,71 @@ class MemoryClient:
 
         try:
             error_data = response.json()
-            message = error_data.get("error", {}).get("message", response.text)
         except Exception:
-            message = response.text
+            error_data = {}
+
+        envelope = error_data.get("error") or error_data.get("detail") or {}
+        if not isinstance(envelope, dict):
+            envelope = {"message": str(envelope)}
+        nested = envelope.get("message")
+        details = nested if isinstance(nested, dict) else envelope
+        message = (
+            (details.get("message") if isinstance(details, dict) else None)
+            or (nested if isinstance(nested, str) else None)
+            or response.text
+        )
+        code = str(details.get("code") or envelope.get("code") or "") or None
+        request_id = (
+            details.get("request_id")
+            or envelope.get("request_id")
+            or response.headers.get("X-Request-ID")
+        )
 
         if status_code == 401:
-            raise AuthenticationError(message)
+            raise AuthenticationError(
+                message, code=code, request_id=request_id, details=details
+            )
         elif status_code == 404:
-            raise NotFoundError(message)
+            raise NotFoundError(
+                message, code=code, request_id=request_id, details=details
+            )
         elif status_code == 422:
             errors = error_data.get("error", {}).get("details", [])
-            raise ValidationError(message, errors=errors)
+            raise ValidationError(
+                message,
+                errors=errors,
+                code=code,
+                request_id=request_id,
+                details=details,
+            )
         elif status_code == 429:
-            raise RateLimitError(message)
+            raise RateLimitError(
+                message, code=code, request_id=request_id, details=details
+            )
         elif status_code >= 500:
-            raise ServerError(message)
+            raise ServerError(
+                message, code=code, request_id=request_id, details=details
+            )
+        elif status_code in {402, 403} and (
+            "ENTITLEMENT" in str(code or "")
+            or details.get("error")
+            in {"feature_not_available", "tier_upgrade_required"}
+        ):
+            raise EntitlementError(
+                message,
+                status_code=status_code,
+                code=code,
+                request_id=request_id,
+                details=details,
+            )
         else:
-            raise HebbrixError(message, status_code=status_code)
+            raise HebbrixError(
+                message,
+                status_code=status_code,
+                code=code,
+                request_id=request_id,
+                details=details,
+            )
 
     async def request(
         self,
@@ -153,7 +200,24 @@ class MemoryClient:
         if response.status_code >= 400:
             self._handle_error(response)
 
-        return response.json() if response.text else {}
+        payload = response.json() if response.text else {}
+        if isinstance(payload, dict):
+            # Preserve transport-only recovery identifiers on durable 202
+            # receipts.  The resource layer needs these values if its local
+            # readiness deadline expires after the write has committed.
+            recovery_headers = {
+                "request_id": response.headers.get("X-Request-ID"),
+                "status_url": response.headers.get("Location"),
+                "outbox_event_id": response.headers.get("X-Hebbrix-Index-Event"),
+                "retry_after": response.headers.get("Retry-After"),
+            }
+            for key, value in recovery_headers.items():
+                if value and not payload.get(key):
+                    payload[key] = value
+            replay = response.headers.get("X-Idempotent-Replay")
+            if replay is not None and "idempotency_replay" not in payload:
+                payload["idempotency_replay"] = replay.casefold() == "true"
+        return payload
 
     async def get(self, path: str, **kwargs) -> Dict[str, Any]:
         """Make a GET request."""

@@ -3,12 +3,18 @@
 import inspect
 
 from hebbrix.resources import (
+    CollectionsResource,
+    ConsolidationResource,
     CorrectionsResource,
     MemoriesResource,
     MemoryJobsResource,
+    MemoryToolsResource,
     ProceduralResource,
     ProofLoopResource,
+    RLResource,
     SearchResource,
+    TemporalResource,
+    WorkingMemoryResource,
 )
 from hebbrix.sync_client import (
     SyncCorrectionsResource,
@@ -45,6 +51,26 @@ def test_async_and_sync_resources_cover_the_ga_lifecycle():
             "public_key",
         },
         ProceduralResource: {"create", "list", "get", "update", "execute", "delete"},
+        CollectionsResource: {"create", "list", "list_page", "get", "update", "delete"},
+        RLResource: {
+            "train_memory_manager",
+            "train_answer_agent",
+            "get_metrics",
+            "evaluate",
+        },
+        TemporalResource: {
+            "add_fact",
+            "query_facts",
+            "query_at_time",
+            "history",
+            "conflicts",
+            "invalidate",
+            "point_in_time",
+            "delete_fact",
+        },
+        WorkingMemoryResource: {"add", "get_context", "compress", "clear"},
+        ConsolidationResource: {"consolidate", "get_stats"},
+        MemoryToolsResource: {"replace", "insert", "rethink"},
         SyncMemoriesResource: {
             "create",
             "create_batch",

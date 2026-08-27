@@ -1,143 +1,127 @@
 # Hebbrix Python SDK
 
-[![PyPI version](https://img.shields.io/pypi/v/hebbrix.svg)](https://pypi.org/project/hebbrix/)
-[![Python versions](https://img.shields.io/pypi/pyversions/hebbrix.svg)](https://pypi.org/project/hebbrix/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-Official Python SDK for the Hebbrix api - **the only memory API with Reinforcement Learning**.
-
-## 🚀 Features
-
-- ✅ **Core API Coverage** - Typed resources for memories, search, and ProofLoop
-- ✅ **Reinforcement Learning** - Train AI agents to optimize memory operations
-- ✅ **Temporal Knowledge Graphs** - Track facts over time with bi-temporal model
-- ✅ **Procedural Memory** - Store and execute learned skills
-- ✅ **Working Memory** - Short-term context buffer for conversations
-- ✅ **Memory Consolidation** - Automatic compression of episodic memories
-- ✅ **ProofLoop** - Learn from outcomes with automatic, verifiable evidence receipts
-- ✅ **Sync + Async** - Equivalent core memory and ProofLoop workflows
-- ✅ **Type Hints** - Complete type annotations
-- ✅ **Clean API** - Pythonic, intuitive interface
-
-## 📦 Installation
+## Install
 
 ```bash
-pip install hebbrix
+pip install hebbrix==2.4.1
 ```
 
-## 🔥 Quick Start
+Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
+supports the core collection, memory, search, correction, procedure, and
+ProofLoop workflows; advanced temporal, working-memory, consolidation,
+memory-tool, and RL resources are currently async-only.
+
+## Quick start
 
 ```python
 import asyncio
 from hebbrix import MemoryClient
 
 async def main():
-    # Initialize client
-    client = MemoryClient(api_key="mem_sk_your_api_key")
-
-    # Create a collection
-    collection = await client.collections.create(
-        name="My AI Agent",
-        description="Personal memory for my chatbot"
-    )
-
-    # Store a memory
-    memory = await client.memories.create(
-        collection_id=collection["id"],
-        user_id="customer-7",
-        agent_id="support-agent",
-        content="User prefers dark mode and loves Python",
-        importance=0.9,
-        wait_for_index=True,
-    )
-
-    # wait_for_index=True polls the returned memory status through the SDK.
-    # It returns only when searchable=true, raises on terminal failure, and
-    # raises TimeoutError if the caller's readiness deadline expires.
-
-    # Batch contract: a successful synchronous return means every accepted item
-    # is searchable. A bounded server timeout raises explicitly and is safe to
-    # retry with the same idempotency key; it is never a successful 202.
-    batch = await client.memories.create_batch(
-        [{"content": "First fact"}, {"content": "Second fact"}],
-        collection_id=collection["id"],
-        wait_for_index=True,
-        idempotency_key="import-42",
-    )
-    # For wait_for_index=False receipts:
-    # batch = await client.memories.wait_batch_until_searchable(batch)
-
-    # Search memories
-    results = await client.search(
-        query="What programming language does user like?",
-        collection_id=collection["id"],
-        limit=5
-    )
-
-    print(results)
-
-    # Close client
-    await client.close()
+    async with MemoryClient(api_key="hbx_your_api_key") as client:
+        collection = await client.collections.create(name="Support memory")
+        memory = await client.memories.create(
+            collection_id=collection["id"],
+            content="Customer prefers concise replies",
+            wait_for_index=True,
+            idempotency_key="customer-42-preference-v1",
+        )
+        results = await client.search(
+            "How should replies be formatted?",
+            collection_id=collection["id"],
+        )
+        print(memory, results)
 
 asyncio.run(main())
 ```
 
-Blocking applications can use the same create/search/ProofLoop fields:
+## Durable readiness
+
+Memory writes return either a searchable completion or a durable `202` receipt.
+A durable receipt means the database commit succeeded while indexing is still
+converging; it is not a failure and does not justify a duplicate write.
+
+When `wait_for_index=True`, the SDK accepts that receipt and polls the documented
+status URL. It returns only after `searchable=true`. If the caller's deadline
+expires, it raises `IndexingTimeoutError`; the exception retains the original
+receipt plus normalized `memory_ids`, `job_id`, `status_url`, `request_id`,
+`outbox_event_id`, retry timing, and idempotency replay metadata when available.
+The synchronous and asynchronous single, batch, inference-job, and update
+readiness paths share this behavior. The SDK never repeats the write while it
+polls.
+
+Catch the typed deadline without discarding the durable acceptance:
 
 ```python
-from hebbrix import SyncMemoryClient
+from hebbrix import IndexingTimeoutError
 
-with SyncMemoryClient(api_key="mem_sk_your_api_key") as client:
-    collection = client.collections.create(name="My Agent")
-    client.memories.create(
-        collection_id=collection["id"],
-        user_id="customer-7",
-        content="User prefers concise answers",
+try:
+    created = await client.memories.create(
+        content="Customer prefers concise replies",
         wait_for_index=True,
+        idempotency_key="customer-42-preference-v1",
+        index_timeout=5,
     )
-    results = client.search(
-        "How should answers be formatted?",
-        collection_id=collection["id"],
-        user_id="customer-7",
-    )
+except IndexingTimeoutError as exc:
+    # Resume observation; do not submit an unrelated second write.
+    if exc.memory_ids:
+        created = await client.memories.wait_until_searchable(exc.memory_ids[0])
+    elif exc.job_id:
+        created = await client.memory_jobs.wait(exc.job_id)
 ```
 
-## ProofLoop: search → decision → outcome → proof
+For a timed-out batch, pass `exc.receipt` to
+`memories.wait_batch_until_searchable(...)`. Alternatively, replay the exact
+same body with `exc.idempotency_key`; a changed body with the same key is
+rejected by the API rather than creating a second logical write. For an update,
+resume polling `exc.memory_ids[0]` because the relational edit already committed.
+
+For an asynchronous batch receipt:
 
 ```python
-search = await client.search_with_proof(
-    "What should the agent do next?",
+receipt = await client.memories.create_batch(
+    [{"content": "First fact"}, {"content": "Second fact"}],
     collection_id="collection-42",
-    user_id="customer-7",
+    wait_for_index=False,
+    idempotency_key="import-42",
 )
-decision = await client.proofloop.decide(
-    policy_key="agent.next_action",
-    candidates=[{"action_key": "act"}, {"action_key": "ask"}],
-    collection_id="collection-42",
-    user_id="customer-7",
-    proof_context=search["proof_context"],
-)
-await client.proofloop.record_outcome(
-    decision["decision_id"], success=True, idempotency_key="run-123-result"
-)
-proof = await client.proofloop.proof(decision["decision_id"])
+completed = await client.memories.wait_batch_until_searchable(receipt)
 ```
 
-## 📚 Complete Documentation
+## Pagination
 
-Visit https://docs.hebbrix.com for full documentation.
+`collections.list()` returns the current page's collection items for backward
+compatibility. Use `collections.list_page()` when cursor metadata is required.
+Memory resources provide the same `list()`/`list_page()` distinction.
 
-## 🔗 Links
+## Advanced capabilities and entitlements
 
-- **Documentation**: https://docs.hebbrix.com
-- **API Reference**: https://api.hebbrix.com/docs
-- **GitHub**: https://github.com/hebbrix/hebbrix
-- **Examples**: https://github.com/hebbrix/examples
+The async client exposes the canonical `/v1` temporal, working-memory,
+consolidation, memory-tool, and RL contracts. RL metrics and evaluation require
+the Pro plan. Process-wide RL training and checkpoint mutation require an admin
+role. Entitlement failures raise `EntitlementError` and preserve the stable
+error code, current/required plan, request ID, and support action.
 
-## 📄 License
+The experimental World Model is intentionally not exported by this public SDK.
+It remains withdrawn until a trained, versioned production model artifact and
+an end-to-end public serving contract are available.
 
-MIT License - see [LICENSE](LICENSE) for details
+The authoritative account capability matrix is available from
+`GET /v1/users/me/capabilities`.
 
----
+## Release compatibility
 
-**Built with ❤️ by the Hebbrix team**
+The production API publishes exact build and artifact compatibility at
+[`GET /v1/release`](https://api.hebbrix.com/v1/release). The public OpenAPI is
+[`/openapi.json`](https://api.hebbrix.com/openapi.json).
+
+- [Documentation](https://docs.hebbrix.com)
+- [API reference](https://api.hebbrix.com/docs)
+- [PyPI files](https://pypi.org/project/hebbrix/#files)
+- [Support](https://www.hebbrix.com/contact)
+
+## License
+
+MIT. See `LICENSE` in the distribution.

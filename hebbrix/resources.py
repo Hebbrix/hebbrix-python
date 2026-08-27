@@ -7,8 +7,10 @@ Each resource class wraps a specific set of API endpoints.
 import asyncio
 import json
 import time
+import uuid
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
 
+from hebbrix.exceptions import IndexingTimeoutError
 from hebbrix.models import SearchSafetyEnvelope
 
 if TYPE_CHECKING:
@@ -253,22 +255,45 @@ class CollectionsResource(BaseResource):
 
     async def list(
         self,
-        skip: int = 0,
-        limit: int = 100,
+        limit: int = 50,
+        cursor: Optional[str] = None,
+        name: Optional[str] = None,
+        name_prefix: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         List all collections.
 
         Args:
-            skip: Number of items to skip
             limit: Maximum number of items
 
         Returns:
             List of collections
         """
+        page = await self.list_page(
+            limit=limit,
+            cursor=cursor,
+            name=name,
+            name_prefix=name_prefix,
+        )
+        return list(page.get("items") or [])
+
+    async def list_page(
+        self,
+        limit: int = 50,
+        cursor: Optional[str] = None,
+        name: Optional[str] = None,
+        name_prefix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return one canonical cursor-paginated collection page."""
+
         return await self.client.get(
             "/v1/collections",
-            params={"skip": skip, "limit": limit},
+            params={
+                "cursor": cursor,
+                "limit": limit,
+                "name": name,
+                "name_prefix": name_prefix,
+            },
         )
 
     async def get(self, collection_id: str) -> Dict[str, Any]:
@@ -432,6 +457,7 @@ class MemoriesResource(BaseResource):
                 receipt,
                 timeout=index_timeout,
                 poll_interval=index_poll_interval,
+                idempotency_key=idempotency_key,
             )
         return receipt
 
@@ -447,13 +473,14 @@ class MemoriesResource(BaseResource):
         namespace: Optional[str] = None,
         wait_for_index: bool = False,
         idempotency_key: Optional[str] = None,
+        index_timeout: float = 60.0,
+        index_poll_interval: float = 0.5,
     ) -> Dict[str, Any]:
         """Create a durable batch with explicit synchronous/async readiness.
 
-        When ``wait_for_index`` is true, a successful return is guaranteed to
-        have ``processing_status=completed`` and ``searchable=true``. A bounded
-        server timeout raises an HTTP error and may be retried with the same
-        idempotency key; it is never returned as a successful processing state.
+        When ``wait_for_index`` is true, the API may return a durable 202
+        receipt. The SDK polls the receipt until all items are searchable or
+        raises ``IndexingTimeoutError`` carrying the original durable receipt.
         """
 
         if not 1 <= len(memories) <= 100:
@@ -483,9 +510,11 @@ class MemoriesResource(BaseResource):
             receipt.get("searchable") is True
             and str(receipt.get("processing_status") or "").casefold() == "completed"
         ):
-            raise RuntimeError(
-                "wait_for_index batch response was not fully searchable; retry "
-                "with the same Idempotency-Key"
+            receipt = await self.wait_batch_until_searchable(
+                receipt,
+                timeout=index_timeout,
+                poll_interval=index_poll_interval,
+                idempotency_key=idempotency_key,
             )
         return receipt
 
@@ -495,6 +524,7 @@ class MemoriesResource(BaseResource):
         *,
         timeout: float = 60.0,
         poll_interval: float = 0.5,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Poll every item in an asynchronous batch receipt to one terminal state.
 
@@ -513,11 +543,20 @@ class MemoriesResource(BaseResource):
             )
             for row in rows:
                 state = str(row.get("processing_status") or "").casefold()
+                if state == "completed" and row.get("searchable") is not True:
+                    raise RuntimeError(
+                        f"memory {row.get('id')} reported completed without "
+                        "searchable=true"
+                    )
                 if state in {"failed", "cancelled", "canceled"}:
                     raise RuntimeError(
                         f"memory {row.get('id')} indexing reached terminal state {state}"
                     )
-            if all(row.get("searchable") is True for row in rows):
+            if all(
+                row.get("searchable") is True
+                and str(row.get("processing_status") or "").casefold() == "completed"
+                for row in rows
+            ):
                 return {
                     **receipt,
                     "processing_status": "completed",
@@ -532,7 +571,14 @@ class MemoriesResource(BaseResource):
                     ],
                 }
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"batch was not searchable within {timeout}s")
+                timeout_error = TimeoutError(
+                    f"batch was not searchable within {timeout}s; the write is durable",
+                )
+                raise IndexingTimeoutError(
+                    str(timeout_error),
+                    receipt,
+                    idempotency_key=idempotency_key,
+                ) from timeout_error
             await asyncio.sleep(max(0.05, poll_interval))
 
     async def wait_until_searchable(
@@ -570,6 +616,7 @@ class MemoriesResource(BaseResource):
         *,
         timeout: float,
         poll_interval: float,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         if (
             receipt.get("searchable") is True
@@ -592,9 +639,14 @@ class MemoriesResource(BaseResource):
                         f"memory job {job_id} reached terminal state {state}"
                     )
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(
+                    timeout_error = TimeoutError(
                         f"memory job {job_id} did not become searchable within {timeout}s"
                     )
+                    raise IndexingTimeoutError(
+                        f"{timeout_error}; the write is durable",
+                        receipt,
+                        idempotency_key=idempotency_key,
+                    ) from timeout_error
                 await asyncio.sleep(max(0.05, poll_interval))
 
         candidates = [
@@ -610,11 +662,19 @@ class MemoriesResource(BaseResource):
             raise RuntimeError(
                 "wait_for_index response contained neither a memory id nor a job id"
             )
-        ready = await self.wait_until_searchable(
-            memory_id,
-            timeout=timeout,
-            poll_interval=poll_interval,
-        )
+        try:
+            ready = await self.wait_until_searchable(
+                memory_id,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        except TimeoutError as exc:
+            raise IndexingTimeoutError(
+                f"memory {memory_id} was not searchable within {timeout}s; "
+                "the write is durable",
+                receipt,
+                idempotency_key=idempotency_key,
+            ) from exc
         receipt["searchable"] = True
         receipt["processing_status"] = "completed"
         receipt["status_url"] = ready.get("status_url") or f"/v1/memories/{memory_id}"
@@ -766,6 +826,8 @@ class MemoriesResource(BaseResource):
         importance: Optional[float] = None,
         metadata: Optional[Dict[str, Any]] = None,
         wait_for_index: Optional[bool] = None,
+        index_timeout: float = 60.0,
+        index_poll_interval: float = 0.5,
     ) -> Dict[str, Any]:
         """
         Update a memory.
@@ -789,7 +851,15 @@ class MemoriesResource(BaseResource):
         if wait_for_index is not None:
             data["wait_for_index"] = wait_for_index
 
-        return await self.client.patch(f"/v1/memories/{memory_id}", json=data)
+        receipt = await self.client.patch(f"/v1/memories/{memory_id}", json=data)
+        if wait_for_index is True:
+            receipt = {**receipt, "id": receipt.get("id") or memory_id}
+            receipt = await self._ensure_searchable_receipt(
+                receipt,
+                timeout=index_timeout,
+                poll_interval=index_poll_interval,
+            )
+        return receipt
 
     async def delete(self, memory_id: str) -> None:
         """
@@ -1201,7 +1271,6 @@ class RLResource(BaseResource):
 
     async def train_memory_manager(
         self,
-        collection_id: Optional[str] = None,
         num_episodes: int = 100,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -1209,7 +1278,6 @@ class RLResource(BaseResource):
         Train the Memory Manager agent using RL.
 
         Args:
-            collection_id: Optional collection to train on
             num_episodes: Number of training episodes
             **kwargs: Additional training parameters
 
@@ -1217,9 +1285,8 @@ class RLResource(BaseResource):
             Training results with metrics
         """
         return await self.client.post(
-            "/rl/train/memory-manager",
+            "/v1/rl/train/memory-manager",
             json={
-                "collection_id": collection_id,
                 "num_episodes": num_episodes,
                 **kwargs,
             },
@@ -1227,7 +1294,6 @@ class RLResource(BaseResource):
 
     async def train_answer_agent(
         self,
-        collection_id: Optional[str] = None,
         num_episodes: int = 100,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -1235,7 +1301,6 @@ class RLResource(BaseResource):
         Train the Answer Agent using RL.
 
         Args:
-            collection_id: Optional collection to train on
             num_episodes: Number of training episodes
             **kwargs: Additional training parameters
 
@@ -1243,9 +1308,8 @@ class RLResource(BaseResource):
             Training results with metrics
         """
         return await self.client.post(
-            "/rl/train/answer-agent",
+            "/v1/rl/train/answer-agent",
             json={
-                "collection_id": collection_id,
                 "num_episodes": num_episodes,
                 **kwargs,
             },
@@ -1258,7 +1322,7 @@ class RLResource(BaseResource):
         Returns:
             Training metrics and statistics
         """
-        return await self.client.get("/rl/metrics")
+        return await self.client.get("/v1/rl/metrics")
 
     async def evaluate(
         self,
@@ -1276,7 +1340,7 @@ class RLResource(BaseResource):
             Evaluation results
         """
         return await self.client.post(
-            "/rl/evaluate",
+            "/v1/rl/evaluate",
             json={
                 "agent_type": agent_type,
                 "collection_id": collection_id,
@@ -1456,8 +1520,11 @@ class TemporalResource(BaseResource):
         subject: str,
         predicate: str,
         object: str,
-        valid_from: Optional[str] = None,
+        valid_from: str,
         valid_until: Optional[str] = None,
+        observed_at: Optional[str] = None,
+        subject_type: str = "ENTITY",
+        object_type: str = "ENTITY",
         confidence: float = 1.0,
         source_memory_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -1479,13 +1546,16 @@ class TemporalResource(BaseResource):
             Created fact
         """
         return await self.client.post(
-            "/temporal/facts",
+            "/v1/temporal/facts",
             json={
                 "subject": subject,
+                "subject_type": subject_type,
                 "predicate": predicate,
                 "object": object,
+                "object_type": object_type,
                 "valid_from": valid_from,
                 "valid_until": valid_until,
+                "observed_at": observed_at,
                 "confidence": confidence,
                 "source_memory_id": source_memory_id,
                 "metadata": metadata or {},
@@ -1511,17 +1581,56 @@ class TemporalResource(BaseResource):
         Returns:
             List of matching facts
         """
-        params = {}
-        if subject:
-            params["subject"] = subject
-        if predicate:
-            params["predicate"] = predicate
-        if object:
-            params["object"] = object
+        if not subject:
+            raise ValueError("subject is required by the temporal query contract")
         if at_time:
-            params["at_time"] = at_time
+            response = await self.query_at_time(
+                subject=subject,
+                predicate=predicate,
+                timestamp=at_time,
+            )
+            facts = list(response.get("facts") or [])
+        elif predicate:
+            response = await self.history(subject=subject, predicate=predicate)
+            facts = list(response.get("history") or [])
+        else:
+            raise ValueError("predicate or at_time is required")
+        if object is not None:
+            facts = [row for row in facts if row.get("object") == object]
+        return facts
 
-        return await self.client.get("/temporal/facts", params=params)
+    async def query_at_time(
+        self,
+        subject: str,
+        timestamp: str,
+        predicate: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return await self.client.post(
+            "/v1/temporal/facts/query-at-time",
+            json={"subject": subject, "predicate": predicate, "timestamp": timestamp},
+        )
+
+    async def history(
+        self, subject: str, predicate: str, limit: int = 50
+    ) -> Dict[str, Any]:
+        return await self.client.get(
+            "/v1/temporal/facts/history",
+            params={"subject": subject, "predicate": predicate, "limit": limit},
+        )
+
+    async def conflicts(self, subject: str, predicate: str) -> Dict[str, Any]:
+        return await self.client.get(
+            "/v1/temporal/facts/conflicts",
+            params={"subject": subject, "predicate": predicate},
+        )
+
+    async def invalidate(
+        self, subject: str, predicate: str, object: str
+    ) -> Dict[str, Any]:
+        return await self.client.post(
+            "/v1/temporal/facts/invalidate",
+            json={"subject": subject, "predicate": predicate, "object": object},
+        )
 
     async def point_in_time(
         self,
@@ -1538,28 +1647,29 @@ class TemporalResource(BaseResource):
         Returns:
             Knowledge state at that time
         """
-        return await self.client.post(
-            "/temporal/point-in-time",
-            json={
-                "timestamp": timestamp,
-                "entity": entity,
-            },
-        )
+        if not entity:
+            raise ValueError("entity is required and maps to the canonical subject")
+        return await self.query_at_time(subject=entity, timestamp=timestamp)
 
     async def delete_fact(self, fact_id: str) -> Dict[str, Any]:
         """Permanently delete a tenant-scoped temporal fact by stable ID."""
 
-        return await self.client.delete(f"/temporal/facts/{fact_id}")
+        return await self.client.delete(f"/v1/temporal/facts/{fact_id}")
 
 
 class WorkingMemoryResource(BaseResource):
     """Working memory buffer endpoints."""
+
+    def __init__(self, client: "MemoryClient"):
+        super().__init__(client)
+        self.session_id = f"sdk-{uuid.uuid4()}"
 
     async def add(
         self,
         role: str,
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Add item to working memory buffer.
@@ -1573,40 +1683,50 @@ class WorkingMemoryResource(BaseResource):
             Added item
         """
         return await self.client.post(
-            "/working-memory",
+            "/v1/working-memory/add",
             json={
+                "session_id": session_id or self.session_id,
                 "role": role,
                 "content": content,
                 "metadata": metadata or {},
             },
         )
 
-    async def get_context(self) -> Dict[str, Any]:
+    async def get_context(
+        self, session_id: Optional[str] = None, include_compressed: bool = False
+    ) -> Dict[str, Any]:
         """
         Get current working memory context.
 
         Returns:
             Current context with buffer items
         """
-        return await self.client.get("/working-memory/context")
+        return await self.client.get(
+            f"/v1/working-memory/context/{session_id or self.session_id}",
+            params={"include_compressed": include_compressed},
+        )
 
-    async def compress(self) -> Dict[str, Any]:
+    async def compress(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Compress working memory buffer.
 
         Returns:
             Compression result
         """
-        return await self.client.post("/working-memory/compress")
+        return await self.client.post(
+            f"/v1/working-memory/compress/{session_id or self.session_id}"
+        )
 
-    async def clear(self) -> Dict[str, Any]:
+    async def clear(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Clear working memory buffer.
 
         Returns:
             Clear result
         """
-        return await self.client.delete("/working-memory")
+        return await self.client.delete(
+            f"/v1/working-memory/clear/{session_id or self.session_id}"
+        )
 
 
 class ConsolidationResource(BaseResource):
@@ -1615,7 +1735,8 @@ class ConsolidationResource(BaseResource):
     async def consolidate(
         self,
         collection_id: str,
-        threshold: int = 100,
+        lookback_days: int = 7,
+        utility_threshold: float = 0.3,
     ) -> Dict[str, Any]:
         """
         Trigger memory consolidation.
@@ -1628,10 +1749,11 @@ class ConsolidationResource(BaseResource):
             Consolidation results
         """
         return await self.client.post(
-            "/consolidation/consolidate",
+            "/v1/consolidation/consolidate",
             json={
                 "collection_id": collection_id,
-                "threshold": threshold,
+                "lookback_days": lookback_days,
+                "utility_threshold": utility_threshold,
             },
         )
 
@@ -1645,33 +1767,7 @@ class ConsolidationResource(BaseResource):
         Returns:
             Consolidation stats
         """
-        return await self.client.get(
-            "/consolidation/stats",
-            params={"collection_id": collection_id},
-        )
-
-    async def archive(
-        self,
-        collection_id: str,
-        before_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Archive old memories.
-
-        Args:
-            collection_id: Collection ID
-            before_date: Archive memories before this date (ISO timestamp)
-
-        Returns:
-            Archive result
-        """
-        return await self.client.post(
-            "/consolidation/archive",
-            json={
-                "collection_id": collection_id,
-                "before_date": before_date,
-            },
-        )
+        return await self.client.get(f"/v1/consolidation/stats/{collection_id}")
 
 
 class MemoryToolsResource(BaseResource):
@@ -1682,6 +1778,9 @@ class MemoryToolsResource(BaseResource):
         memory_id: str,
         new_content: str,
         reason: Optional[str] = None,
+        *,
+        old_content: Optional[str] = None,
+        collection_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Replace memory content.
@@ -1694,12 +1793,15 @@ class MemoryToolsResource(BaseResource):
         Returns:
             Updated memory
         """
+        if old_content is None or collection_id is None:
+            raise ValueError("old_content and collection_id are required")
         return await self.client.post(
-            "/memory-tools/replace",
+            "/v1/memory-tools/replace",
             json={
                 "memory_id": memory_id,
+                "old_content": old_content,
                 "new_content": new_content,
-                "reason": reason,
+                "collection_id": collection_id,
             },
         )
 
@@ -1707,8 +1809,10 @@ class MemoryToolsResource(BaseResource):
         self,
         collection_id: str,
         content: str,
-        position: int,
+        position: Optional[int] = None,
         reason: Optional[str] = None,
+        importance: float = 0.5,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Insert new memory at position.
@@ -1722,20 +1826,26 @@ class MemoryToolsResource(BaseResource):
         Returns:
             Inserted memory
         """
+        compatibility = dict(metadata or {})
+        if position is not None:
+            compatibility.setdefault("requested_position", position)
+        if reason is not None:
+            compatibility.setdefault("reason", reason)
         return await self.client.post(
-            "/memory-tools/insert",
+            "/v1/memory-tools/insert",
             json={
                 "collection_id": collection_id,
                 "content": content,
-                "position": position,
-                "reason": reason,
+                "importance": importance,
+                "metadata": compatibility,
             },
         )
 
     async def rethink(
         self,
         memory_id: str,
-        query: str,
+        collection_id: str,
+        query: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Re-evaluate memory in light of new information.
@@ -1748,59 +1858,9 @@ class MemoryToolsResource(BaseResource):
             Re-evaluation result
         """
         return await self.client.post(
-            "/memory-tools/rethink",
+            "/v1/memory-tools/rethink",
             json={
                 "memory_id": memory_id,
-                "query": query,
-            },
-        )
-
-
-class WorldModelResource(BaseResource):
-    """World model and planning endpoints."""
-
-    async def imagine_retrieval(
-        self,
-        query: str,
-        collection_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Simulate retrieval without actually retrieving.
-
-        Args:
-            query: Query to simulate
-            collection_id: Optional collection
-
-        Returns:
-            Simulated retrieval result
-        """
-        return await self.client.post(
-            "/world-model/imagine-retrieval",
-            json={
-                "query": query,
-                "collection_id": collection_id,
-            },
-        )
-
-    async def plan(
-        self,
-        goal: str,
-        collection_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Plan memory operations to achieve goal.
-
-        Args:
-            goal: Goal to achieve
-            collection_id: Optional collection
-
-        Returns:
-            Planned operations
-        """
-        return await self.client.post(
-            "/world-model/plan",
-            json={
-                "goal": goal,
                 "collection_id": collection_id,
             },
         )

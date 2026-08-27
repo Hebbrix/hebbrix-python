@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional
 import httpx
 from hebbrix.exceptions import (
     AuthenticationError,
+    EntitlementError,
     HebbrixError,
+    IndexingTimeoutError,
     NotFoundError,
     RateLimitError,
     ServerError,
@@ -98,6 +100,7 @@ class SyncMemoriesResource:
                 receipt,
                 timeout=index_timeout,
                 poll_interval=index_poll_interval,
+                idempotency_key=idempotency_key,
             )
         return receipt
 
@@ -113,6 +116,8 @@ class SyncMemoriesResource:
         namespace: Optional[str] = None,
         wait_for_index: bool = False,
         idempotency_key: Optional[str] = None,
+        index_timeout: float = 60.0,
+        index_poll_interval: float = 0.5,
     ) -> Dict[str, Any]:
         if not 1 <= len(memories) <= 100:
             raise ValueError("memories must contain between 1 and 100 items")
@@ -141,9 +146,11 @@ class SyncMemoriesResource:
             receipt.get("searchable") is True
             and str(receipt.get("processing_status") or "").casefold() == "completed"
         ):
-            raise RuntimeError(
-                "wait_for_index batch response was not fully searchable; retry "
-                "with the same Idempotency-Key"
+            receipt = self.wait_batch_until_searchable(
+                receipt,
+                timeout=index_timeout,
+                poll_interval=index_poll_interval,
+                idempotency_key=idempotency_key,
             )
         return receipt
 
@@ -153,6 +160,7 @@ class SyncMemoriesResource:
         *,
         timeout: float = 60.0,
         poll_interval: float = 0.5,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Poll every item in an asynchronous batch receipt until searchable."""
 
@@ -164,11 +172,20 @@ class SyncMemoriesResource:
             rows = [self.get(memory_id) for memory_id in memory_ids]
             for row in rows:
                 state = str(row.get("processing_status") or "").casefold()
+                if state == "completed" and row.get("searchable") is not True:
+                    raise RuntimeError(
+                        f"memory {row.get('id')} reported completed without "
+                        "searchable=true"
+                    )
                 if state in {"failed", "cancelled", "canceled"}:
                     raise RuntimeError(
                         f"memory {row.get('id')} indexing reached terminal state {state}"
                     )
-            if all(row.get("searchable") is True for row in rows):
+            if all(
+                row.get("searchable") is True
+                and str(row.get("processing_status") or "").casefold() == "completed"
+                for row in rows
+            ):
                 return {
                     **receipt,
                     "processing_status": "completed",
@@ -183,7 +200,14 @@ class SyncMemoriesResource:
                     ],
                 }
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"batch was not searchable within {timeout}s")
+                timeout_error = TimeoutError(
+                    f"batch was not searchable within {timeout}s; the write is durable",
+                )
+                raise IndexingTimeoutError(
+                    str(timeout_error),
+                    receipt,
+                    idempotency_key=idempotency_key,
+                ) from timeout_error
             time.sleep(max(0.05, poll_interval))
 
     def wait_until_searchable(
@@ -219,6 +243,7 @@ class SyncMemoriesResource:
         *,
         timeout: float,
         poll_interval: float,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         if (
             receipt.get("searchable") is True
@@ -227,11 +252,19 @@ class SyncMemoriesResource:
             return receipt
         job_id = str(receipt.get("job_id") or "")
         if job_id:
-            job = SyncMemoryJobsResource(self.client).wait(
-                job_id,
-                timeout=timeout,
-                poll_interval=poll_interval,
-            )
+            try:
+                job = SyncMemoryJobsResource(self.client).wait(
+                    job_id,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
+                )
+            except TimeoutError as exc:
+                raise IndexingTimeoutError(
+                    f"memory job {job_id} did not become searchable within {timeout}s; "
+                    "the write is durable",
+                    receipt,
+                    idempotency_key=idempotency_key,
+                ) from exc
             if str(job.get("status") or "").casefold() != "completed":
                 raise RuntimeError(f"memory job {job_id} did not complete")
             receipt.update(job)
@@ -251,11 +284,19 @@ class SyncMemoriesResource:
             raise RuntimeError(
                 "wait_for_index response contained neither a memory id nor a job id"
             )
-        ready = self.wait_until_searchable(
-            memory_id,
-            timeout=timeout,
-            poll_interval=poll_interval,
-        )
+        try:
+            ready = self.wait_until_searchable(
+                memory_id,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        except TimeoutError as exc:
+            raise IndexingTimeoutError(
+                f"memory {memory_id} was not searchable within {timeout}s; "
+                "the write is durable",
+                receipt,
+                idempotency_key=idempotency_key,
+            ) from exc
         receipt["searchable"] = True
         receipt["processing_status"] = "completed"
         receipt["status_url"] = ready.get("status_url") or f"/v1/memories/{memory_id}"
@@ -302,6 +343,8 @@ class SyncMemoriesResource:
         importance: Optional[float] = None,
         metadata: Optional[Dict[str, Any]] = None,
         wait_for_index: Optional[bool] = None,
+        index_timeout: float = 60.0,
+        index_poll_interval: float = 0.5,
     ) -> Dict[str, Any]:
         payload = {
             "content": content,
@@ -309,10 +352,18 @@ class SyncMemoriesResource:
             "metadata": metadata,
             "wait_for_index": wait_for_index,
         }
-        return self.client.patch(
+        receipt = self.client.patch(
             f"/v1/memories/{memory_id}",
             json={key: value for key, value in payload.items() if value is not None},
         )
+        if wait_for_index is True:
+            receipt = {**receipt, "id": receipt.get("id") or memory_id}
+            receipt = self._ensure_searchable_receipt(
+                receipt,
+                timeout=index_timeout,
+                poll_interval=index_poll_interval,
+            )
+        return receipt
 
     def delete(self, memory_id: str) -> Dict[str, Any]:
         return self.client.delete(f"/v1/memories/{memory_id}")
@@ -738,7 +789,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.3.2",
+            "User-Agent": "hebbrix-python/2.4.1",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -763,27 +814,86 @@ class SyncMemoryClient:
             error_data = response.json()
         except Exception:
             error_data = {}
-        detail = error_data.get("detail") or error_data.get("error") or response.text
-        message = detail.get("message") if isinstance(detail, dict) else str(detail)
+        envelope = error_data.get("error") or error_data.get("detail") or {}
+        if not isinstance(envelope, dict):
+            envelope = {"message": str(envelope)}
+        nested = envelope.get("message")
+        detail = nested if isinstance(nested, dict) else envelope
+        details = detail if isinstance(detail, dict) else {}
+        message = (
+            (details.get("message"))
+            or (nested if isinstance(nested, str) else None)
+            or response.text
+        )
+        code = str(details.get("code") or envelope.get("code") or "") or None
+        request_id = (
+            details.get("request_id")
+            or envelope.get("request_id")
+            or response.headers.get("X-Request-ID")
+        )
         if response.status_code == 401:
-            raise AuthenticationError(message)
+            raise AuthenticationError(
+                message, code=code, request_id=request_id, details=details
+            )
         if response.status_code == 404:
-            raise NotFoundError(message)
+            raise NotFoundError(
+                message, code=code, request_id=request_id, details=details
+            )
         if response.status_code == 422:
             raise ValidationError(
-                message, errors=detail if isinstance(detail, list) else []
+                message,
+                errors=detail if isinstance(detail, list) else [],
+                code=code,
+                request_id=request_id,
+                details=details,
             )
         if response.status_code == 429:
-            raise RateLimitError(message)
+            raise RateLimitError(
+                message, code=code, request_id=request_id, details=details
+            )
         if response.status_code >= 500:
-            raise ServerError(message)
-        raise HebbrixError(message, status_code=response.status_code)
+            raise ServerError(
+                message, code=code, request_id=request_id, details=details
+            )
+        if response.status_code in {402, 403} and (
+            "ENTITLEMENT" in str(code or "")
+            or details.get("error")
+            in {"feature_not_available", "tier_upgrade_required"}
+        ):
+            raise EntitlementError(
+                message,
+                status_code=response.status_code,
+                code=code,
+                request_id=request_id,
+                details=details,
+            )
+        raise HebbrixError(
+            message,
+            status_code=response.status_code,
+            code=code,
+            request_id=request_id,
+            details=details,
+        )
 
     def request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
         response = self._client.request(method, path, **kwargs)
         if response.status_code >= 400:
             self._handle_error(response)
-        return response.json() if response.text else {}
+        payload = response.json() if response.text else {}
+        if isinstance(payload, dict):
+            recovery_headers = {
+                "request_id": response.headers.get("X-Request-ID"),
+                "status_url": response.headers.get("Location"),
+                "outbox_event_id": response.headers.get("X-Hebbrix-Index-Event"),
+                "retry_after": response.headers.get("Retry-After"),
+            }
+            for key, value in recovery_headers.items():
+                if value and not payload.get(key):
+                    payload[key] = value
+            replay = response.headers.get("X-Idempotent-Replay")
+            if replay is not None and "idempotency_replay" not in payload:
+                payload["idempotency_replay"] = replay.casefold() == "true"
+        return payload
 
     def get(self, path: str, **kwargs) -> Dict[str, Any]:
         return self.request("GET", path, **kwargs)

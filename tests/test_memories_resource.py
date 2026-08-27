@@ -1,6 +1,8 @@
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
+from hebbrix import IndexingTimeoutError, MemoryClient
 from hebbrix.resources import (
     CorrectionsResource,
     MemoriesResource,
@@ -28,11 +30,47 @@ class RecordingClient:
 
     async def patch(self, path, **kwargs):
         self.calls.append((path, kwargs))
-        return {"id": "memory-1"}
+        return {
+            "id": "memory-1",
+            "processing_status": "completed",
+            "searchable": True,
+        }
 
     async def delete(self, path, **kwargs):
         self.calls.append((path, kwargs))
         return {}
+
+
+@pytest.mark.asyncio
+async def test_async_transport_copies_durable_recovery_headers_into_receipt():
+    response = httpx.Response(
+        202,
+        json={
+            "results": [{"id": "memory-1"}],
+            "processing_status": "processing",
+            "searchable": False,
+        },
+        headers={
+            "X-Request-ID": "request-transport",
+            "Location": "/v1/memories/memory-1",
+            "X-Hebbrix-Index-Event": "event-transport",
+            "X-Idempotent-Replay": "true",
+            "Retry-After": "1",
+        },
+        request=httpx.Request("POST", "https://api.hebbrix.com/v1/memories"),
+    )
+    client = MemoryClient(api_key="test-key")
+    client._client.request = AsyncMock(return_value=response)
+    try:
+        receipt = await client.post("/v1/memories", json={"content": "A fact"})
+    finally:
+        await client.close()
+
+    assert receipt["request_id"] == "request-transport"
+    assert receipt["status_url"] == "/v1/memories/memory-1"
+    assert receipt["outbox_event_id"] == "event-transport"
+    assert receipt["idempotency_replay"] is True
+    assert receipt["retry_after"] == "1"
 
 
 @pytest.mark.asyncio
@@ -217,6 +255,167 @@ async def test_wait_for_index_polls_until_the_memory_is_actually_searchable(
 
     assert receipt["searchable"] is True
     assert receipt["processing_status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_single_create_timeout_preserves_the_original_durable_receipt():
+    client = RecordingClient()
+    durable_receipt = {
+        "results": [{"id": "memory-1"}],
+        "processing_status": "processing",
+        "searchable": False,
+        "outbox_event_id": "event-1",
+        "status_url": "/v1/memories/memory-1",
+        "request_id": "request-1",
+        "idempotency_replay": False,
+    }
+
+    async def post(_path, **_kwargs):
+        return dict(durable_receipt)
+
+    async def get(_path, **_kwargs):
+        return {
+            "id": "memory-1",
+            "processing_status": "processing",
+            "searchable": False,
+        }
+
+    client.post = post
+    client.get = get
+
+    with pytest.raises(IndexingTimeoutError) as raised:
+        await MemoriesResource(client).create(
+            content="A durable fact",
+            wait_for_index=True,
+            idempotency_key="single-retry-1",
+            index_timeout=0,
+        )
+
+    error = raised.value
+    assert error.receipt == durable_receipt
+    assert error.memory_ids == ["memory-1"]
+    assert error.status_url == "/v1/memories/memory-1"
+    assert error.request_id == "request-1"
+    assert error.outbox_event_id == "event-1"
+    assert error.idempotency_key == "single-retry-1"
+    assert error.idempotency_replay is False
+    assert isinstance(error.__cause__, TimeoutError)
+
+
+@pytest.mark.asyncio
+async def test_inference_job_timeout_preserves_the_job_receipt():
+    client = RecordingClient()
+    durable_receipt = {
+        "job_id": "job-1",
+        "processing_status": "processing",
+        "status_url": "/v1/memory-jobs/job-1",
+        "request_id": "request-2",
+    }
+
+    async def post(_path, **_kwargs):
+        return dict(durable_receipt)
+
+    async def get(_path, **_kwargs):
+        return {"job_id": "job-1", "status": "processing"}
+
+    client.post = post
+    client.get = get
+
+    with pytest.raises(IndexingTimeoutError) as raised:
+        await MemoriesResource(client).create(
+            messages=[{"role": "user", "content": "Remember this"}],
+            infer=True,
+            async_dispatch=True,
+            wait_for_index=True,
+            idempotency_key="inference-retry-1",
+            index_timeout=0,
+        )
+
+    assert raised.value.receipt == durable_receipt
+    assert raised.value.job_id == "job-1"
+    assert raised.value.status_url == "/v1/memory-jobs/job-1"
+    assert raised.value.idempotency_key == "inference-retry-1"
+    assert isinstance(raised.value.__cause__, TimeoutError)
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_normalizes_recovery_metadata_from_durable_receipt():
+    client = RecordingClient()
+    durable_receipt = {
+        "results": [{"id": "memory-1"}, {"memory_id": "memory-2"}],
+        "memory_ids": ["memory-1", "memory-2"],
+        "processing_status": "processing",
+        "searchable": False,
+        "outbox_event_id": "event-batch",
+        "status_url": "/v1/memories/memory-1",
+    }
+
+    async def post(_path, **_kwargs):
+        return dict(durable_receipt)
+
+    async def get(path, **_kwargs):
+        return {
+            "id": path.rsplit("/", 1)[-1],
+            "processing_status": "processing",
+            "searchable": False,
+        }
+
+    client.post = post
+    client.get = get
+
+    with pytest.raises(IndexingTimeoutError) as raised:
+        await MemoriesResource(client).create_batch(
+            [{"content": "First"}, {"content": "Second"}],
+            wait_for_index=True,
+            idempotency_key="batch-retry-2",
+            index_timeout=0,
+        )
+
+    assert raised.value.receipt == durable_receipt
+    assert raised.value.memory_ids == ["memory-1", "memory-2"]
+    assert raised.value.idempotency_key == "batch-retry-2"
+    assert isinstance(raised.value.__cause__, TimeoutError)
+
+
+@pytest.mark.asyncio
+async def test_update_wait_timeout_preserves_receipt_without_repeating_patch():
+    client = RecordingClient()
+    durable_receipt = {
+        "id": "memory-1",
+        "processing_status": "processing",
+        "searchable": False,
+        "outbox_event_id": "event-update",
+        "status_url": "/v1/memories/memory-1",
+        "request_id": "request-update",
+    }
+
+    async def patch(path, **kwargs):
+        client.calls.append((path, kwargs))
+        return dict(durable_receipt)
+
+    async def get(_path, **_kwargs):
+        return {
+            "id": "memory-1",
+            "processing_status": "processing",
+            "searchable": False,
+        }
+
+    client.patch = patch
+    client.get = get
+
+    with pytest.raises(IndexingTimeoutError) as raised:
+        await MemoriesResource(client).update(
+            "memory-1",
+            content="Current truth",
+            wait_for_index=True,
+            index_timeout=0,
+        )
+
+    assert raised.value.receipt == durable_receipt
+    assert raised.value.memory_ids == ["memory-1"]
+    assert raised.value.outbox_event_id == "event-update"
+    assert len(client.calls) == 1
+    assert client.calls[0][0] == "/v1/memories/memory-1"
 
 
 @pytest.mark.asyncio

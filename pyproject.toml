@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hebbrix"
-version = "2.3.2"
-description = "Advanced Memory API for AI Agents with Reinforcement Learning - 3-line integration"
+version = "2.4.1"
+description = "Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Hebbrix Team", email = "support@hebbrix.com"}
 ]
@@ -32,7 +33,7 @@ keywords = [
     "working-memory"
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -65,8 +66,9 @@ dev = [
 [project.urls]
 Homepage = "https://hebbrix.com"
 Documentation = "https://docs.hebbrix.com"
-Repository = "https://github.com/hebbrix/hebbrix-python"
-"Bug Tracker" = "https://github.com/hebbrix/hebbrix-python/issues"
+Source = "https://github.com/Hebbrix/hebbrix-python"
+Issues = "https://github.com/Hebbrix/hebbrix-python/issues"
+Support = "https://www.hebbrix.com/contact"
 "API Reference" = "https://api.hebbrix.com/docs"
 
 [tool.setuptools.packages.find]

@@ -1,6 +1,10 @@
+import httpx
+import pytest
+from hebbrix import IndexingTimeoutError
 from hebbrix.sync_client import (
     SyncCorrectionsResource,
     SyncMemoriesResource,
+    SyncMemoryClient,
     SyncProofLoopResource,
     SyncSearchResource,
 )
@@ -24,11 +28,46 @@ class RecordingSyncClient:
 
     def patch(self, path, **kwargs):
         self.calls.append(("PATCH", path, kwargs))
-        return {"id": "memory-1"}
+        return {
+            "id": "memory-1",
+            "processing_status": "completed",
+            "searchable": True,
+        }
 
     def delete(self, path, **kwargs):
         self.calls.append(("DELETE", path, kwargs))
         return {}
+
+
+def test_sync_transport_copies_durable_recovery_headers_into_receipt():
+    response = httpx.Response(
+        202,
+        json={
+            "results": [{"id": "memory-1"}],
+            "processing_status": "processing",
+            "searchable": False,
+        },
+        headers={
+            "X-Request-ID": "request-transport",
+            "Location": "/v1/memories/memory-1",
+            "X-Hebbrix-Index-Event": "event-transport",
+            "X-Idempotent-Replay": "true",
+            "Retry-After": "1",
+        },
+        request=httpx.Request("POST", "https://api.hebbrix.com/v1/memories"),
+    )
+    client = SyncMemoryClient(api_key="test-key")
+    client._client.request = lambda *_args, **_kwargs: response
+    try:
+        receipt = client.post("/v1/memories", json={"content": "A fact"})
+    finally:
+        client.close()
+
+    assert receipt["request_id"] == "request-transport"
+    assert receipt["status_url"] == "/v1/memories/memory-1"
+    assert receipt["outbox_event_id"] == "event-transport"
+    assert receipt["idempotency_replay"] is True
+    assert receipt["retry_after"] == "1"
 
 
 def test_sync_create_matches_all_async_memory_create_fields():
@@ -82,6 +121,142 @@ def test_sync_memory_and_correction_lifecycle_expose_scope_and_idempotency():
         idempotency_key="correction-1",
     )
     assert client.calls[-1][2]["headers"] == {"Idempotency-Key": "correction-1"}
+
+
+def test_sync_single_create_timeout_preserves_original_receipt_and_cause():
+    class PendingClient(RecordingSyncClient):
+        def post(self, path, **kwargs):
+            self.calls.append(("POST", path, kwargs))
+            return {
+                "results": [{"id": "memory-1"}],
+                "processing_status": "processing",
+                "searchable": False,
+                "outbox_event_id": "event-1",
+                "status_url": "/v1/memories/memory-1",
+                "request_id": "request-1",
+            }
+
+        def get(self, path, **kwargs):
+            self.calls.append(("GET", path, kwargs))
+            return {
+                "id": "memory-1",
+                "processing_status": "processing",
+                "searchable": False,
+            }
+
+    client = PendingClient()
+    with pytest.raises(IndexingTimeoutError) as raised:
+        SyncMemoriesResource(client).create(
+            content="A durable fact",
+            wait_for_index=True,
+            idempotency_key="sync-retry-1",
+            index_timeout=0,
+        )
+
+    assert raised.value.memory_ids == ["memory-1"]
+    assert raised.value.request_id == "request-1"
+    assert raised.value.outbox_event_id == "event-1"
+    assert raised.value.idempotency_key == "sync-retry-1"
+    assert isinstance(raised.value.__cause__, TimeoutError)
+    assert sum(call[0] == "POST" for call in client.calls) == 1
+
+
+def test_sync_inference_job_timeout_preserves_job_recovery_metadata():
+    class PendingJobClient(RecordingSyncClient):
+        def post(self, path, **kwargs):
+            self.calls.append(("POST", path, kwargs))
+            return {
+                "job_id": "job-1",
+                "processing_status": "processing",
+                "status_url": "/v1/memory-jobs/job-1",
+            }
+
+        def get(self, path, **kwargs):
+            self.calls.append(("GET", path, kwargs))
+            return {"job_id": "job-1", "status": "processing"}
+
+    with pytest.raises(IndexingTimeoutError) as raised:
+        SyncMemoriesResource(PendingJobClient()).create(
+            messages=[{"role": "user", "content": "Remember this"}],
+            infer=True,
+            async_dispatch=True,
+            wait_for_index=True,
+            idempotency_key="sync-job-retry-1",
+            index_timeout=0,
+        )
+
+    assert raised.value.job_id == "job-1"
+    assert raised.value.status_url == "/v1/memory-jobs/job-1"
+    assert raised.value.idempotency_key == "sync-job-retry-1"
+    assert isinstance(raised.value.__cause__, TimeoutError)
+
+
+def test_sync_update_wait_timeout_preserves_receipt_and_only_patches_once():
+    class PendingUpdateClient(RecordingSyncClient):
+        def patch(self, path, **kwargs):
+            self.calls.append(("PATCH", path, kwargs))
+            return {
+                "id": "memory-1",
+                "processing_status": "processing",
+                "searchable": False,
+                "outbox_event_id": "event-update",
+                "status_url": "/v1/memories/memory-1",
+            }
+
+        def get(self, path, **kwargs):
+            self.calls.append(("GET", path, kwargs))
+            return {
+                "id": "memory-1",
+                "processing_status": "processing",
+                "searchable": False,
+            }
+
+    client = PendingUpdateClient()
+    with pytest.raises(IndexingTimeoutError) as raised:
+        SyncMemoriesResource(client).update(
+            "memory-1",
+            content="Current truth",
+            wait_for_index=True,
+            index_timeout=0,
+        )
+
+    assert raised.value.memory_ids == ["memory-1"]
+    assert raised.value.outbox_event_id == "event-update"
+    assert sum(call[0] == "PATCH" for call in client.calls) == 1
+
+
+def test_sync_batch_timeout_preserves_receipt_and_idempotency_metadata():
+    class PendingBatchClient(RecordingSyncClient):
+        def post(self, path, **kwargs):
+            self.calls.append(("POST", path, kwargs))
+            return {
+                "memory_ids": ["memory-1", "memory-2"],
+                "processing_status": "processing",
+                "searchable": False,
+                "outbox_event_id": "event-batch",
+                "status_url": "/v1/memories/memory-1",
+            }
+
+        def get(self, path, **kwargs):
+            self.calls.append(("GET", path, kwargs))
+            return {
+                "id": path.rsplit("/", 1)[-1],
+                "processing_status": "processing",
+                "searchable": False,
+            }
+
+    with pytest.raises(IndexingTimeoutError) as raised:
+        SyncMemoriesResource(PendingBatchClient()).create_batch(
+            [{"content": "First"}, {"content": "Second"}],
+            wait_for_index=True,
+            idempotency_key="sync-batch-retry-1",
+            index_timeout=0,
+        )
+
+    assert raised.value.memory_ids == ["memory-1", "memory-2"]
+    assert raised.value.outbox_event_id == "event-batch"
+    assert raised.value.idempotency_key == "sync-batch-retry-1"
+    assert isinstance(raised.value.__cause__, TimeoutError)
 
 
 def test_sync_proofloop_supports_rotated_public_key_lookup():
