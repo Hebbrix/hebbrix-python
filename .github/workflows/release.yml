@@ -34,7 +34,9 @@ jobs:
           cache: pip
 
       - name: Install release tooling
-        run: python -m pip install --upgrade build twine pytest pytest-asyncio
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]' build twine
 
       - name: Verify requested version
         env:
