@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hebbrix"
-version = "2.2.0"
+version = "2.3.2"
 description = "Advanced Memory API for AI Agents with Reinforcement Learning - 3-line integration"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -57,8 +57,10 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "black>=23.0.0",
-    "flake8>=6.0.0",
+    "flake8>=5.0.4,<6.0.0; python_full_version < '3.8.1'",
+    "flake8>=6.0.0; python_full_version >= '3.8.1'",
     "mypy>=1.0.0",
+    "cryptography>=42.0.0",
 ]
 
 [project.urls]

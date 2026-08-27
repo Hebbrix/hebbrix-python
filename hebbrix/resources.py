@@ -4,7 +4,12 @@ API Resource classes
 Each resource class wraps a specific set of API endpoints.
 """
 
+import asyncio
+import json
+import time
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
+
+from hebbrix.models import SearchSafetyEnvelope
 
 if TYPE_CHECKING:
     from hebbrix.client import MemoryClient
@@ -15,6 +20,136 @@ class BaseResource:
 
     def __init__(self, client: "MemoryClient"):
         self.client = client
+
+
+def _memory_create_payload(
+    *,
+    collection_id: Optional[str] = None,
+    content: Optional[str] = None,
+    messages: Optional[List[Dict[str, str]]] = None,
+    importance: Optional[float] = None,
+    source_type: str = "text",
+    source_reference: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    infer: bool = False,
+    user_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    run_id: Optional[str] = None,
+    app_id: Optional[str] = None,
+    namespace: Optional[str] = None,
+    wait_for_index: bool = False,
+    async_dispatch: Optional[bool] = None,
+    title: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    source: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build the identical GA request body for sync and async clients."""
+
+    if (content is None or not str(content).strip()) and not messages:
+        raise ValueError("content or messages must be provided")
+    payload: Dict[str, Any] = {
+        "source_type": source_type,
+        "metadata": metadata or {},
+        "infer": infer,
+        "wait_for_index": wait_for_index,
+    }
+    if content is not None:
+        payload["content"] = content
+    if messages is not None:
+        payload["messages"] = messages
+    optional_fields = {
+        "collection_id": collection_id,
+        "source_reference": source_reference,
+        "user_id": user_id,
+        "agent_id": agent_id,
+        "run_id": run_id,
+        "app_id": app_id,
+        "namespace": namespace,
+        "async_dispatch": async_dispatch,
+        "title": title,
+        "tags": tags,
+        "source": source,
+    }
+    payload.update(
+        {key: value for key, value in optional_fields.items() if value is not None}
+    )
+    if importance is not None:
+        payload["importance"] = importance
+    return payload
+
+
+_SEARCH_SAFETY_FIELDS = frozenset(
+    {
+        "no_match",
+        "abstain_recommended",
+        "query_confidence",
+        "grounding",
+        "evidence_ids",
+        "safety_contract_version",
+    }
+)
+
+
+def _canonical_search_envelope(
+    response: Dict[str, Any], *, rows_key: str = "results"
+) -> Dict[str, Any]:
+    """Validate API-owned evidence metadata and fail closed on contract drift."""
+
+    data = dict(response or {})
+    rows = data.get(rows_key)
+    rows = rows if isinstance(rows, list) else []
+    missing = sorted(_SEARCH_SAFETY_FIELDS.difference(data))
+    reason: Optional[str] = None
+    confidence = data.get("query_confidence")
+    if missing:
+        reason = f"missing_safety_fields:{','.join(missing)}"
+    elif not isinstance(data.get("no_match"), bool) or not isinstance(
+        data.get("abstain_recommended"), bool
+    ):
+        reason = "invalid_abstention_fields"
+    elif not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
+        reason = "invalid_query_confidence"
+    elif not 0.0 <= float(confidence) <= 1.0:
+        reason = "invalid_query_confidence"
+    elif not isinstance(data.get("grounding"), dict):
+        reason = "invalid_grounding_receipt"
+    elif not isinstance(data.get("evidence_ids"), list):
+        reason = "invalid_evidence_ids"
+    else:
+        row_ids = {
+            str(row.get("memory_id") or row.get("id"))
+            for row in rows
+            if isinstance(row, dict) and (row.get("memory_id") or row.get("id"))
+        }
+        evidence_ids = {str(value) for value in data.get("evidence_ids", []) if value}
+        if not row_ids.issubset(evidence_ids):
+            reason = "rows_not_bound_to_evidence_ids"
+        elif data.get("no_match") and (row_ids or evidence_ids):
+            reason = "no_match_contains_evidence"
+
+    # Degradation and abstention are confidence signals, not proof that the
+    # API returned no evidence.  Erasing valid, evidence-bound rows here made
+    # the SDK disagree with the REST response and converted a safe fallback
+    # into a false negative.  Fail closed only when the envelope is malformed
+    # or the server explicitly reports no match.
+    if reason or data.get("no_match") is True:
+        data[rows_key] = []
+        if rows_key == "results":
+            data["total"] = 0
+        data["no_match"] = True
+        data["abstain_recommended"] = True
+        data["query_confidence"] = 0.0
+        data["evidence_ids"] = []
+        data["evidence_claims"] = []
+        if reason:
+            data["sdk_safety_reason"] = reason
+            data["grounding"] = {
+                "status": "no_grounded_match",
+                "reason": reason,
+            }
+    elif data.get("degraded") is True or data.get("abstain_recommended") is True:
+        data["sdk_safety_reason"] = "degraded_evidence_preserved"
+    return data
 
 
 class AuthResource(BaseResource):
@@ -195,13 +330,27 @@ class MemoriesResource(BaseResource):
 
     async def create(
         self,
-        collection_id: str,
-        content: str,
+        collection_id: Optional[str] = None,
+        content: Optional[str] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
         importance: Optional[float] = None,
         source_type: str = "text",
         source_reference: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         infer: bool = False,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        app_id: Optional[str] = None,
+        namespace: Optional[str] = None,
+        wait_for_index: bool = False,
+        async_dispatch: Optional[bool] = None,
+        title: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        source: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        index_timeout: float = 60.0,
+        index_poll_interval: float = 0.5,
     ) -> Dict[str, Any]:
         """
         Create a memory.
@@ -224,8 +373,11 @@ class MemoriesResource(BaseResource):
         a memory id.
 
         Args:
-            collection_id: Collection ID
-            content: Memory content
+            collection_id: Optional collection ID. The server can resolve a
+                default or app/namespace collection when omitted.
+            content: Optional memory content.
+            messages: Optional conversation messages (role/content) for the
+                inference path. Either ``content`` or ``messages`` is required.
             importance: Importance (0-1). When set, the direct-store path
                 (``infer=False``) uses this EXACT value. Leave as ``None`` to let
                 the server auto-score. Ignored when ``infer=True``.
@@ -234,33 +386,250 @@ class MemoriesResource(BaseResource):
             metadata: Optional metadata
             infer: When True, extract facts via the LLM pipeline instead of
                 storing ``content`` verbatim. Default False (direct store).
+            user_id: End-user isolation scope.
+            agent_id: Optional agent isolation scope.
+            run_id: Optional run isolation scope.
+            app_id: App-specific collection resolution key.
+            namespace: Namespace within ``app_id``.
+            wait_for_index: Wait for read-after-write searchability.
+            async_dispatch: For inference, return a background job immediately.
+            title: Optional source title.
+            tags: Optional source tags.
+            source: Optional source label.
+            idempotency_key: Stable retry key. Reusing it with a different
+                payload is rejected by the API.
 
         Returns:
             Created memory (MemoryAddResponse). With ``infer=False`` (default),
             ``results[0].id`` is the real, get-able memory id.
         """
-        payload: Dict[str, Any] = {
-            "collection_id": collection_id,
-            "content": content,
-            "source_type": source_type,
-            "source_reference": source_reference,
-            "metadata": metadata or {},
-            "infer": infer,
-        }
-        # Send importance ONLY when the caller set it, so an unspecified
-        # importance keeps the server's auto-scoring instead of pinning a value.
-        if importance is not None:
-            payload["importance"] = importance
-        return await self.client.post(
-            "/v1/memories",
-            json=payload,
+        payload = _memory_create_payload(
+            collection_id=collection_id,
+            content=content,
+            messages=messages,
+            importance=importance,
+            source_type=source_type,
+            source_reference=source_reference,
+            metadata=metadata,
+            infer=infer,
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            app_id=app_id,
+            namespace=namespace,
+            wait_for_index=wait_for_index,
+            async_dispatch=async_dispatch,
+            title=title,
+            tags=tags,
+            source=source,
         )
+        request_kwargs: Dict[str, Any] = {"json": payload}
+        if idempotency_key:
+            request_kwargs["headers"] = {"Idempotency-Key": idempotency_key}
+        receipt = await self.client.post("/v1/memories", **request_kwargs)
+        if wait_for_index:
+            receipt = await self._ensure_searchable_receipt(
+                receipt,
+                timeout=index_timeout,
+                poll_interval=index_poll_interval,
+            )
+        return receipt
+
+    async def create_batch(
+        self,
+        memories: List[Dict[str, Any]],
+        *,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        app_id: Optional[str] = None,
+        namespace: Optional[str] = None,
+        wait_for_index: bool = False,
+        idempotency_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a durable batch with explicit synchronous/async readiness.
+
+        When ``wait_for_index`` is true, a successful return is guaranteed to
+        have ``processing_status=completed`` and ``searchable=true``. A bounded
+        server timeout raises an HTTP error and may be retried with the same
+        idempotency key; it is never returned as a successful processing state.
+        """
+
+        if not 1 <= len(memories) <= 100:
+            raise ValueError("memories must contain between 1 and 100 items")
+        if any(not str(item.get("content") or "").strip() for item in memories):
+            raise ValueError("every batch memory must contain non-empty content")
+        payload = {
+            "memories": memories,
+            "wait_for_index": wait_for_index,
+        }
+        optional = {
+            "collection_id": collection_id,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "run_id": run_id,
+            "app_id": app_id,
+            "namespace": namespace,
+        }
+        payload.update(
+            {key: value for key, value in optional.items() if value is not None}
+        )
+        kwargs: Dict[str, Any] = {"json": payload}
+        if idempotency_key:
+            kwargs["headers"] = {"Idempotency-Key": idempotency_key}
+        receipt = await self.client.post("/v1/memories/batch", **kwargs)
+        if wait_for_index and not (
+            receipt.get("searchable") is True
+            and str(receipt.get("processing_status") or "").casefold() == "completed"
+        ):
+            raise RuntimeError(
+                "wait_for_index batch response was not fully searchable; retry "
+                "with the same Idempotency-Key"
+            )
+        return receipt
+
+    async def wait_batch_until_searchable(
+        self,
+        receipt: Dict[str, Any],
+        *,
+        timeout: float = 60.0,
+        poll_interval: float = 0.5,
+    ) -> Dict[str, Any]:
+        """Poll every item in an asynchronous batch receipt to one terminal state.
+
+        Cancellation uses normal asyncio task cancellation. A failed/cancelled
+        item or a local deadline raises explicitly; a successful return means
+        every batch item reported ``searchable=true``.
+        """
+
+        memory_ids = list(dict.fromkeys(map(str, receipt.get("memory_ids") or [])))
+        if not memory_ids:
+            raise ValueError("batch receipt does not contain memory_ids")
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            rows = await asyncio.gather(
+                *(self.get(memory_id) for memory_id in memory_ids)
+            )
+            for row in rows:
+                state = str(row.get("processing_status") or "").casefold()
+                if state in {"failed", "cancelled", "canceled"}:
+                    raise RuntimeError(
+                        f"memory {row.get('id')} indexing reached terminal state {state}"
+                    )
+            if all(row.get("searchable") is True for row in rows):
+                return {
+                    **receipt,
+                    "processing_status": "completed",
+                    "searchable": True,
+                    "results": [
+                        {
+                            "id": memory_id,
+                            "memory_id": memory_id,
+                            "processing_status": "completed",
+                        }
+                        for memory_id in memory_ids
+                    ],
+                }
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"batch was not searchable within {timeout}s")
+            await asyncio.sleep(max(0.05, poll_interval))
+
+    async def wait_until_searchable(
+        self,
+        memory_id: str,
+        *,
+        timeout: float = 60.0,
+        poll_interval: float = 0.5,
+    ) -> Dict[str, Any]:
+        """Poll the authoritative memory status until indexing is terminal."""
+
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            memory = await self.get(memory_id)
+            state = str(memory.get("processing_status") or "").casefold()
+            if memory.get("searchable") is True:
+                return memory
+            if state == "completed":
+                raise RuntimeError(
+                    f"memory {memory_id} reported completed without searchable=true"
+                )
+            if state in {"failed", "cancelled", "canceled"}:
+                raise RuntimeError(
+                    f"memory {memory_id} indexing reached terminal state {state}"
+                )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"memory {memory_id} was not searchable within {timeout}s"
+                )
+            await asyncio.sleep(max(0.05, poll_interval))
+
+    async def _ensure_searchable_receipt(
+        self,
+        receipt: Dict[str, Any],
+        *,
+        timeout: float,
+        poll_interval: float,
+    ) -> Dict[str, Any]:
+        if (
+            receipt.get("searchable") is True
+            and str(receipt.get("processing_status") or "").casefold() == "completed"
+        ):
+            return receipt
+        job_id = str(receipt.get("job_id") or "")
+        if job_id:
+            deadline = time.monotonic() + max(0.0, timeout)
+            while True:
+                job = await self.client.get(f"/v1/memory-jobs/{job_id}")
+                state = str(job.get("status") or "").casefold()
+                if state == "completed":
+                    receipt.update(job)
+                    receipt["searchable"] = True
+                    receipt["processing_status"] = "completed"
+                    return receipt
+                if state in {"failed", "cancelled", "canceled"}:
+                    raise RuntimeError(
+                        f"memory job {job_id} reached terminal state {state}"
+                    )
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"memory job {job_id} did not become searchable within {timeout}s"
+                    )
+                await asyncio.sleep(max(0.05, poll_interval))
+
+        candidates = [
+            receipt.get("id"),
+            *(
+                item.get("id") or item.get("memory_id")
+                for item in (receipt.get("results") or [])
+                if isinstance(item, dict)
+            ),
+        ]
+        memory_id = next((str(value) for value in candidates if value), "")
+        if not memory_id:
+            raise RuntimeError(
+                "wait_for_index response contained neither a memory id nor a job id"
+            )
+        ready = await self.wait_until_searchable(
+            memory_id,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+        receipt["searchable"] = True
+        receipt["processing_status"] = "completed"
+        receipt["status_url"] = ready.get("status_url") or f"/v1/memories/{memory_id}"
+        return receipt
 
     async def list_page(
         self,
         collection_id: Optional[str] = None,
         cursor: Optional[str] = None,
         limit: int = 50,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        scope: Optional[str] = None,
+        include_superseded: bool = False,
     ) -> Dict[str, Any]:
         """
         List memories with full pagination metadata.
@@ -280,19 +649,34 @@ class MemoriesResource(BaseResource):
               - has_more: bool — True if more pages exist
               - total_count: int — total number of memories matching the filter
         """
-        params: Dict[str, Any] = {"limit": limit}
+        params: Dict[str, Any] = {
+            "limit": limit,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "run_id": run_id,
+            "scope": scope,
+            "include_superseded": include_superseded,
+        }
         if collection_id:
             params["collection_id"] = collection_id
         if cursor:
             params["cursor"] = cursor
 
-        return await self.client.get("/v1/memories", params=params)
+        return await self.client.get(
+            "/v1/memories",
+            params={key: value for key, value in params.items() if value is not None},
+        )
 
     async def list(
         self,
         collection_id: Optional[str] = None,
         cursor: Optional[str] = None,
         limit: int = 50,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        scope: Optional[str] = None,
+        include_superseded: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         List memories (single page, items only).
@@ -310,7 +694,14 @@ class MemoriesResource(BaseResource):
             List of memory dicts for the requested page
         """
         page = await self.list_page(
-            collection_id=collection_id, cursor=cursor, limit=limit
+            collection_id=collection_id,
+            cursor=cursor,
+            limit=limit,
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            scope=scope,
+            include_superseded=include_superseded,
         )
         return page.get("items", [])
 
@@ -318,6 +709,11 @@ class MemoriesResource(BaseResource):
         self,
         collection_id: Optional[str] = None,
         limit: int = 50,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        scope: Optional[str] = None,
+        include_superseded: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Async-iterate every memory matching the filter, following cursors.
@@ -336,7 +732,14 @@ class MemoriesResource(BaseResource):
         cursor: Optional[str] = None
         while True:
             page = await self.list_page(
-                collection_id=collection_id, cursor=cursor, limit=limit
+                collection_id=collection_id,
+                cursor=cursor,
+                limit=limit,
+                user_id=user_id,
+                agent_id=agent_id,
+                run_id=run_id,
+                scope=scope,
+                include_superseded=include_superseded,
             )
             for item in page.get("items", []):
                 yield item
@@ -362,6 +765,7 @@ class MemoriesResource(BaseResource):
         content: Optional[str] = None,
         importance: Optional[float] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        wait_for_index: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Update a memory.
@@ -382,6 +786,8 @@ class MemoriesResource(BaseResource):
             data["importance"] = importance
         if metadata is not None:
             data["metadata"] = metadata
+        if wait_for_index is not None:
+            data["wait_for_index"] = wait_for_index
 
         return await self.client.patch(f"/v1/memories/{memory_id}", json=data)
 
@@ -395,6 +801,101 @@ class MemoriesResource(BaseResource):
         await self.client.delete(f"/v1/memories/{memory_id}")
 
 
+class MemoryJobsResource(BaseResource):
+    """Polling helpers for asynchronous memory processing receipts."""
+
+    async def get(self, job_id: str) -> Dict[str, Any]:
+        return await self.client.get(f"/v1/memory-jobs/{job_id}")
+
+    async def wait(
+        self,
+        job_id: str,
+        *,
+        timeout: float = 60.0,
+        poll_interval: float = 0.5,
+    ) -> Dict[str, Any]:
+        """Poll until a memory job is terminal or the local timeout expires."""
+
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            receipt = await self.get(job_id)
+            state = str(receipt.get("status") or "").casefold()
+            if state in {"completed", "failed", "cancelled", "canceled"}:
+                return receipt
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"memory job {job_id} did not finish in {timeout}s")
+            await asyncio.sleep(max(0.05, poll_interval))
+
+
+class CorrectionsResource(BaseResource):
+    """Tenant-scoped factual, preference, and procedural corrections."""
+
+    async def create(
+        self,
+        *,
+        corrected_content: str,
+        correction_type: str = "preference",
+        original_content: Optional[str] = None,
+        context: Optional[str] = None,
+        memory_id: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        confidence: float = 1.0,
+        metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = {
+            "corrected_content": corrected_content,
+            "correction_type": correction_type,
+            "original_content": original_content,
+            "context": context,
+            "memory_id": memory_id,
+            "collection_id": collection_id,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "confidence": confidence,
+            "metadata": metadata,
+        }
+        request_kwargs: Dict[str, Any] = {
+            "json": {key: value for key, value in payload.items() if value is not None}
+        }
+        if idempotency_key:
+            request_kwargs["headers"] = {"Idempotency-Key": idempotency_key}
+        return await self.client.post("/v1/corrections", **request_kwargs)
+
+    async def relevant(
+        self,
+        query: str,
+        *,
+        correction_type: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        include_global: bool = False,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        params = {
+            "query": query,
+            "correction_type": correction_type,
+            "collection_id": collection_id,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "include_global": include_global,
+            "limit": limit,
+        }
+        return await self.client.get(
+            "/v1/corrections/relevant",
+            params={key: value for key, value in params.items() if value is not None},
+        )
+
+    async def get(self, correction_id: str) -> Dict[str, Any]:
+        return await self.client.get(f"/v1/corrections/{correction_id}")
+
+    async def delete(self, correction_id: str) -> Dict[str, Any]:
+        return await self.client.delete(f"/v1/corrections/{correction_id}")
+
+
 class SearchResource(BaseResource):
     """Search and reasoning endpoints."""
 
@@ -405,6 +906,14 @@ class SearchResource(BaseResource):
         limit: int = 10,
         search_type: str = "hybrid",
         filters: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        fast: Optional[bool] = None,
+        threshold: Optional[float] = None,
+        include_low_confidence: bool = False,
+        group_by_source: bool = True,
+        debug: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Search memories.
@@ -419,18 +928,22 @@ class SearchResource(BaseResource):
         Returns:
             Search results
         """
-        response = await self.client.post(
-            "/v1/search",
-            json={
-                "query": query,
-                "collection_id": collection_id,
-                "limit": limit,
-                "search_type": search_type,
-                "filters": filters or {},
-            },
+        response = await self.search_with_proof(
+            query=query,
+            collection_id=collection_id,
+            limit=limit,
+            search_type=search_type,
+            filters=filters,
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            fast=fast,
+            threshold=threshold,
+            include_low_confidence=include_low_confidence,
+            group_by_source=group_by_source,
+            debug=debug,
         )
-
-        return response.get("results", [])
+        return response["results"]
 
     async def search_with_proof(
         self,
@@ -440,24 +953,42 @@ class SearchResource(BaseResource):
         search_type: str = "hybrid",
         filters: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        fast: Optional[bool] = None,
+        threshold: Optional[float] = None,
+        include_low_confidence: bool = False,
+        group_by_source: bool = True,
+        debug: bool = False,
+    ) -> SearchSafetyEnvelope:
         """Search and preserve the automatic ProofLoop context.
 
         The legacy ``search`` method still returns only the result list. Use
         this method when the selected evidence will feed a learned decision.
         """
 
-        return await self.client.post(
+        payload: Dict[str, Any] = {
+            "query": query,
+            "collection_id": collection_id,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "run_id": run_id,
+            "limit": limit,
+            "search_type": search_type,
+            "filters": filters or {},
+            "include_low_confidence": include_low_confidence,
+            "group_by_source": group_by_source,
+            "debug": debug,
+        }
+        if fast is not None:
+            payload["fast"] = fast
+        if threshold is not None:
+            payload["threshold"] = threshold
+        response = await self.client.post(
             "/v1/search",
-            json={
-                "query": query,
-                "collection_id": collection_id,
-                "user_id": user_id,
-                "limit": limit,
-                "search_type": search_type,
-                "filters": filters or {},
-            },
+            json={key: value for key, value in payload.items() if value is not None},
         )
+        return _canonical_search_envelope(response)
 
     async def similar(
         self,
@@ -487,7 +1018,11 @@ class SearchResource(BaseResource):
         collection_id: Optional[str] = None,
         provider: Optional[str] = None,
         include_steps: bool = False,
-    ) -> Dict[str, Any]:
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        facets: Optional[List[str]] = None,
+    ) -> SearchSafetyEnvelope:
         """
         Perform reasoning over memories.
 
@@ -496,19 +1031,28 @@ class SearchResource(BaseResource):
             collection_id: Optional collection filter
             provider: LLM provider (gemini, openai, anthropic)
             include_steps: Include reasoning steps
+            user_id: End-user isolation scope
+            agent_id: Agent isolation scope
+            run_id: Run isolation scope
+            facets: Optional typed decomposition facets
 
         Returns:
             Reasoning result with answer and sources
         """
-        return await self.client.post(
+        response = await self.client.post(
             "/v1/search/reason",
             json={
                 "query": query,
                 "collection_id": collection_id,
                 "provider": provider,
                 "include_steps": include_steps,
+                "user_id": user_id,
+                "agent_id": agent_id,
+                "run_id": run_id,
+                "facets": facets or [],
             },
         )
+        return _canonical_search_envelope(response, rows_key="sources")
 
 
 class ProofLoopResource(BaseResource):
@@ -522,6 +1066,7 @@ class ProofLoopResource(BaseResource):
         proof_context: Optional[Any] = None,
         collection_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         token = (
@@ -534,11 +1079,95 @@ class ProofLoopResource(BaseResource):
             "candidates": candidates,
             "collection_id": collection_id,
             "user_id": user_id,
+            "idempotency_key": idempotency_key,
             **kwargs,
         }
         if token:
             body["proof_context_token"] = token
         return await self.client.post("/v1/learning/decisions", json=body)
+
+    async def get_decision(self, decision_id: str) -> Dict[str, Any]:
+        return await self.client.get(f"/v1/learning/decisions/{decision_id}")
+
+    async def define_metric(
+        self,
+        *,
+        policy_key: str,
+        metric_key: str,
+        name: str,
+        min_value: float,
+        max_value: float,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        return await self.client.post(
+            "/v1/learning/metrics",
+            json={
+                "policy_key": policy_key,
+                "metric_key": metric_key,
+                "name": name,
+                "min_value": min_value,
+                "max_value": max_value,
+                "collection_id": collection_id,
+                "user_id": user_id,
+                **kwargs,
+            },
+        )
+
+    async def list_metrics(
+        self,
+        *,
+        policy_key: Optional[str] = None,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        params = {
+            "policy_key": policy_key,
+            "collection_id": collection_id,
+            "user_id": user_id,
+        }
+        return await self.client.get(
+            "/v1/learning/metrics",
+            params={key: value for key, value in params.items() if value is not None},
+        )
+
+    async def policy_insights(
+        self,
+        policy_key: str,
+        *,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        action_keys: Optional[List[str]] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        params: Dict[str, Any] = {
+            "collection_id": collection_id,
+            "user_id": user_id,
+            "action_key": action_keys,
+            "context": json.dumps(context) if context is not None else None,
+        }
+        return await self.client.get(
+            f"/v1/learning/policies/{policy_key}/insights",
+            params={key: value for key, value in params.items() if value is not None},
+        )
+
+    async def evaluate_policy(
+        self,
+        policy_key: str,
+        *,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        limit: int = 5000,
+    ) -> Dict[str, Any]:
+        return await self.client.post(
+            f"/v1/learning/policies/{policy_key}/evaluate",
+            json={
+                "collection_id": collection_id,
+                "user_id": user_id,
+                "limit": limit,
+            },
+        )
 
     async def record_outcome(
         self,
@@ -562,8 +1191,9 @@ class ProofLoopResource(BaseResource):
     async def proof(self, decision_id: str) -> Dict[str, Any]:
         return await self.client.get(f"/v1/learning/decisions/{decision_id}/proof")
 
-    async def public_key(self) -> Dict[str, Any]:
-        return await self.client.get("/v1/learning/proof-key")
+    async def public_key(self, key_id: Optional[str] = None) -> Dict[str, Any]:
+        params = {"key_id": key_id} if key_id else None
+        return await self.client.get("/v1/learning/proof-key", params=params)
 
 
 class RLResource(BaseResource):
@@ -657,6 +1287,15 @@ class RLResource(BaseResource):
 class ProceduralResource(BaseResource):
     """Procedural memory endpoints."""
 
+    @staticmethod
+    def _unwrap_procedure(response: Dict[str, Any]) -> Dict[str, Any]:
+        procedure = response.get("procedure")
+        if isinstance(procedure, dict):
+            return procedure
+        if response.get("procedure_id") and not response.get("id"):
+            return {**response, "id": response["procedure_id"]}
+        return response
+
     async def create(
         self,
         name: str,
@@ -682,18 +1321,19 @@ class ProceduralResource(BaseResource):
         Returns:
             Created procedure
         """
-        return await self.client.post(
-            "/procedural",
+        response = await self.client.post(
+            "/v1/procedures",
             json={
                 "name": name,
                 "description": description,
-                "trigger_condition": trigger_condition,
-                "action_sequence": action_sequence,
+                "condition": {"expression": trigger_condition},
+                "action": {"steps": action_sequence},
                 "collection_id": collection_id,
                 "category": category,
-                "metadata": metadata or {},
+                "parameters": metadata or {},
             },
         )
+        return self._unwrap_procedure(response)
 
     async def list(
         self,
@@ -720,7 +1360,10 @@ class ProceduralResource(BaseResource):
         if category:
             params["category"] = category
 
-        return await self.client.get("/procedural", params=params)
+        response = await self.client.get("/v1/procedures", params=params)
+        return (
+            response if isinstance(response, list) else response.get("procedures", [])
+        )
 
     async def get(self, procedure_id: str) -> Dict[str, Any]:
         """
@@ -732,7 +1375,8 @@ class ProceduralResource(BaseResource):
         Returns:
             Procedure data
         """
-        return await self.client.get(f"/procedural/{procedure_id}")
+        response = await self.client.get(f"/v1/procedures/{procedure_id}")
+        return self._unwrap_procedure(response)
 
     async def execute(
         self,
@@ -749,10 +1393,12 @@ class ProceduralResource(BaseResource):
         Returns:
             Execution result
         """
-        return await self.client.post(
-            f"/procedural/{procedure_id}/execute",
-            json={"context": context or {}},
+        response = await self.client.post(
+            f"/v1/procedures/{procedure_id}/execute",
+            json={"input_state": context or {}},
         )
+        result = response.get("execution_result")
+        return result if isinstance(result, dict) else response
 
     async def update(
         self,
@@ -783,13 +1429,14 @@ class ProceduralResource(BaseResource):
         if description is not None:
             data["description"] = description
         if trigger_condition is not None:
-            data["trigger_condition"] = trigger_condition
+            data["condition"] = {"expression": trigger_condition}
         if action_sequence is not None:
-            data["action_sequence"] = action_sequence
+            data["action"] = {"steps": action_sequence}
         if metadata is not None:
-            data["metadata"] = metadata
+            data["parameters"] = metadata
 
-        return await self.client.patch(f"/procedural/{procedure_id}", json=data)
+        response = await self.client.patch(f"/v1/procedures/{procedure_id}", json=data)
+        return self._unwrap_procedure(response)
 
     async def delete(self, procedure_id: str) -> None:
         """
@@ -798,7 +1445,7 @@ class ProceduralResource(BaseResource):
         Args:
             procedure_id: Procedure ID
         """
-        await self.client.delete(f"/procedural/{procedure_id}")
+        await self.client.delete(f"/v1/procedures/{procedure_id}")
 
 
 class TemporalResource(BaseResource):
@@ -898,6 +1545,11 @@ class TemporalResource(BaseResource):
                 "entity": entity,
             },
         )
+
+    async def delete_fact(self, fact_id: str) -> Dict[str, Any]:
+        """Permanently delete a tenant-scoped temporal fact by stable ID."""
+
+        return await self.client.delete(f"/temporal/facts/{fact_id}")
 
 
 class WorkingMemoryResource(BaseResource):

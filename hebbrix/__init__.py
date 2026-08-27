@@ -41,24 +41,26 @@ Features:
 - ✅ Type hints throughout
 """
 
-__version__ = "2.2.0"
+__version__ = "2.3.2"
 __author__ = "Hebbrix Team"
 __license__ = "MIT"
 
-from hebbrix.client import MemoryClient
 from hebbrix.chat import MemoryChat
+from hebbrix.client import MemoryClient
 from hebbrix.exceptions import (
-    HebbrixError,
     AuthenticationError,
-    ValidationError,
+    HebbrixError,
     NotFoundError,
     RateLimitError,
     ServerError,
+    ValidationError,
 )
-
+from hebbrix.models import EvidenceClaim, GroundingReceipt, SearchSafetyEnvelope
+from hebbrix.sync_client import SyncMemoryClient
 
 __all__ = [
     "MemoryClient",
+    "SyncMemoryClient",
     "MemoryChat",
     "HebbrixError",
     "AuthenticationError",
@@ -66,4 +68,7 @@ __all__ = [
     "NotFoundError",
     "RateLimitError",
     "ServerError",
+    "GroundingReceipt",
+    "EvidenceClaim",
+    "SearchSafetyEnvelope",
 ]
