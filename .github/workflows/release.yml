@@ -34,7 +34,7 @@ jobs:
           cache: pip
 
       - name: Install release tooling
-        run: python -m pip install --upgrade build twine
+        run: python -m pip install --upgrade build twine pytest pytest-asyncio
 
       - name: Verify requested version
         env:
@@ -46,6 +46,7 @@ jobs:
       - name: Build and inspect distributions
         run: |
           python -m compileall -q hebbrix
+          python -m pytest -q
           python -m build
           python -m twine check dist/*
           python -m pip install --force-reinstall dist/hebbrix-${{ inputs.version }}-py3-none-any.whl

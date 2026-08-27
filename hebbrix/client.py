@@ -20,7 +20,9 @@ from hebbrix.resources import (
     AuthResource,
     CollectionsResource,
     ConsolidationResource,
+    CorrectionsResource,
     MemoriesResource,
+    MemoryJobsResource,
     MemoryToolsResource,
     ProceduralResource,
     ProofLoopResource,
@@ -73,6 +75,8 @@ class MemoryClient:
         self.auth = AuthResource(self)
         self.collections = CollectionsResource(self)
         self.memories = MemoriesResource(self)
+        self.memory_jobs = MemoryJobsResource(self)
+        self.corrections = CorrectionsResource(self)
         self.search_resource = SearchResource(self)
         self.proofloop = ProofLoopResource(self)
         self.rl = RLResource(self)
@@ -87,7 +91,7 @@ class MemoryClient:
         """Get request headers."""
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.2.0",
+            "User-Agent": "hebbrix-python/2.3.2",
         }
 
         if self.api_key:
@@ -175,6 +179,14 @@ class MemoryClient:
         limit: int = 10,
         search_type: str = "hybrid",
         filters: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        fast: Optional[bool] = None,
+        threshold: Optional[float] = None,
+        include_low_confidence: bool = False,
+        group_by_source: bool = True,
+        debug: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Search memories.
@@ -195,6 +207,14 @@ class MemoryClient:
             limit=limit,
             search_type=search_type,
             filters=filters or {},
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            fast=fast,
+            threshold=threshold,
+            include_low_confidence=include_low_confidence,
+            group_by_source=group_by_source,
+            debug=debug,
         )
 
     async def search_with_proof(
@@ -205,6 +225,13 @@ class MemoryClient:
         search_type: str = "hybrid",
         filters: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        fast: Optional[bool] = None,
+        threshold: Optional[float] = None,
+        include_low_confidence: bool = False,
+        group_by_source: bool = True,
+        debug: bool = False,
     ) -> Dict[str, Any]:
         """Search and return both results and the automatic ProofLoop context."""
 
@@ -215,6 +242,13 @@ class MemoryClient:
             search_type=search_type,
             filters=filters or {},
             user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            fast=fast,
+            threshold=threshold,
+            include_low_confidence=include_low_confidence,
+            group_by_source=group_by_source,
+            debug=debug,
         )
 
     async def reason(
@@ -223,6 +257,10 @@ class MemoryClient:
         collection_id: Optional[str] = None,
         provider: Optional[str] = None,
         include_steps: bool = False,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        facets: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Perform reasoning over memories.
@@ -232,6 +270,10 @@ class MemoryClient:
             collection_id: Optional collection filter
             provider: LLM provider (gemini, openai, anthropic)
             include_steps: Include reasoning steps
+            user_id: End-user isolation scope
+            agent_id: Agent isolation scope
+            run_id: Run isolation scope
+            facets: Optional typed decomposition facets
 
         Returns:
             Reasoning result with answer and sources
@@ -241,6 +283,10 @@ class MemoryClient:
             collection_id=collection_id,
             provider=provider,
             include_steps=include_steps,
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            facets=facets,
         )
 
     async def close(self):
