@@ -9,6 +9,7 @@ import json
 import time
 import uuid
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
+from urllib.parse import quote
 
 from hebbrix.exceptions import IndexingTimeoutError
 from hebbrix.models import SearchSafetyEnvelope
@@ -97,9 +98,9 @@ def _canonical_search_envelope(
 ) -> Dict[str, Any]:
     """Validate API-owned evidence metadata and fail closed on contract drift."""
 
-    data = dict(response or {})
-    rows = data.get(rows_key)
-    rows = rows if isinstance(rows, list) else []
+    data = dict(response) if isinstance(response, dict) else {}
+    raw_rows = data.get(rows_key)
+    rows = raw_rows if isinstance(raw_rows, list) else []
     missing = sorted(_SEARCH_SAFETY_FIELDS.difference(data))
     reason: Optional[str] = None
     confidence = data.get("query_confidence")
@@ -117,6 +118,27 @@ def _canonical_search_envelope(
         reason = "invalid_grounding_receipt"
     elif not isinstance(data.get("evidence_ids"), list):
         reason = "invalid_evidence_ids"
+    elif data.get("safety_contract_version") != "search-safety-v1":
+        reason = "unsupported_safety_contract_version"
+    elif not isinstance(raw_rows, list):
+        reason = "invalid_evidence_rows"
+    elif any(
+        not isinstance(value, str) or not value.strip()
+        for value in data["evidence_ids"]
+    ):
+        reason = "invalid_evidence_ids"
+    elif len(set(data["evidence_ids"])) != len(data["evidence_ids"]):
+        reason = "duplicate_evidence_ids"
+    elif any(
+        not isinstance(row, dict)
+        or not isinstance(row.get("memory_id", row.get("id")), str)
+        or not row.get("memory_id", row.get("id", "")).strip()
+        or ("memory_id" in row and "id" in row and row["memory_id"] != row["id"])
+        for row in rows
+    ):
+        reason = "invalid_evidence_row_identity"
+    elif not rows and data.get("no_match") is False:
+        reason = "no_evidence_rows"
     else:
         row_ids = {
             str(row.get("memory_id") or row.get("id"))
@@ -143,6 +165,9 @@ def _canonical_search_envelope(
         data["query_confidence"] = 0.0
         data["evidence_ids"] = []
         data["evidence_claims"] = []
+        if rows_key == "sources":
+            data["answer"] = None
+            data["citations"] = []
         if reason:
             data["sdk_safety_reason"] = reason
             data["grounding"] = {
@@ -1155,6 +1180,133 @@ class ProofLoopResource(BaseResource):
         if token:
             body["proof_context_token"] = token
         return await self.client.post("/v1/learning/decisions", json=body)
+
+    async def register_verifier(
+        self,
+        *,
+        policy_key: str,
+        api_key_id: str,
+        source_system: str,
+        metric_keys: List[str],
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Owner-session administration; the agent cannot register its own verifier."""
+        return await self.client.post(
+            "/v1/learning/verifiers",
+            json={
+                "policy_key": policy_key,
+                "api_key_id": api_key_id,
+                "source_system": source_system,
+                "metric_keys": metric_keys,
+                "collection_id": collection_id,
+                "user_id": user_id,
+            },
+        )
+
+    async def revoke_verifier(self, verifier_id: str) -> Dict[str, Any]:
+        """Revoke one source without deleting historical evidence."""
+        return await self.client.post(
+            f"/v1/learning/verifiers/{quote(verifier_id, safe='')}/revoke", json={}
+        )
+
+    async def create_episode(
+        self,
+        *,
+        policy_key: str,
+        verifier_id: str,
+        idempotency_key: str,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a scoped durable episode; never grants execution permission."""
+        return await self.client.post(
+            "/v1/learning/episodes",
+            json={
+                "policy_key": policy_key,
+                "verifier_id": verifier_id,
+                "idempotency_key": idempotency_key,
+                "collection_id": collection_id,
+                "user_id": user_id,
+            },
+        )
+
+    async def get_episode(self, episode_id: str, *, offset: int = 0) -> Dict[str, Any]:
+        return await self.client.get(
+            f"/v1/learning/episodes/{quote(episode_id, safe='')}",
+            params={"offset": offset},
+        )
+
+    async def close_episode(self, episode_id: str, *, status: str) -> Dict[str, Any]:
+        return await self.client.post(
+            f"/v1/learning/episodes/{quote(episode_id, safe='')}/close",
+            json={"status": status},
+        )
+
+    async def record_execution(
+        self,
+        decision_id: str,
+        *,
+        attempt_id: str,
+        status: str,
+        actual_action_key: str,
+        arguments_digest: str,
+        evidence_digest: Optional[str] = None,
+        occurred_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Record an execution claim, not an instruction to execute."""
+        body = {
+            "attempt_id": attempt_id,
+            "status": status,
+            "actual_action_key": actual_action_key,
+            "arguments_digest": arguments_digest,
+        }
+        if evidence_digest is not None:
+            body["evidence_digest"] = evidence_digest
+        if occurred_at is not None:
+            body["occurred_at"] = occurred_at
+        return await self.client.post(
+            f"/v1/learning/decisions/{quote(decision_id, safe='')}/executions",
+            json=body,
+        )
+
+    async def assessment(
+        self, decision_id: str, *, evidence_offset: int = 0
+    ) -> Dict[str, Any]:
+        return await self.client.get(
+            f"/v1/learning/decisions/{quote(decision_id, safe='')}/assessment",
+            params={"evidence_offset": evidence_offset},
+        )
+
+    async def verifier_evidence(
+        self, verifier_id: str, decision_id: str
+    ) -> Dict[str, Any]:
+        """Call with the dedicated verifier client, never the actor's credential."""
+        return await self.client.get(
+            f"/v1/learning/verifiers/{quote(verifier_id, safe='')}/decisions/{quote(decision_id, safe='')}"
+        )
+
+    async def deliver_verified_outcomes(
+        self,
+        verifier_id: str,
+        *,
+        decision_id: str,
+        source_event_id: str,
+        evidence_digest: str,
+        execution_digest: str,
+        observations: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Deliver independently checked observations using the registered source key."""
+        return await self.client.post(
+            f"/v1/learning/verifiers/{quote(verifier_id, safe='')}/events",
+            json={
+                "decision_id": decision_id,
+                "source_event_id": source_event_id,
+                "evidence_digest": evidence_digest,
+                "execution_digest": execution_digest,
+                "observations": observations,
+            },
+        )
 
     async def get_decision(self, decision_id: str) -> Dict[str, Any]:
         return await self.client.get(f"/v1/learning/decisions/{decision_id}")

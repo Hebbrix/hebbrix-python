@@ -4,6 +4,7 @@ import json
 import os
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 from hebbrix.exceptions import (
@@ -660,6 +661,131 @@ class SyncProofLoopResource:
             body["proof_context_token"] = token
         return self.client.post("/v1/learning/decisions", json=body)
 
+    def register_verifier(
+        self,
+        *,
+        policy_key: str,
+        api_key_id: str,
+        source_system: str,
+        metric_keys: List[str],
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Owner-session administration; the agent cannot register its own verifier."""
+        return self.client.post(
+            "/v1/learning/verifiers",
+            json={
+                "policy_key": policy_key,
+                "api_key_id": api_key_id,
+                "source_system": source_system,
+                "metric_keys": metric_keys,
+                "collection_id": collection_id,
+                "user_id": user_id,
+            },
+        )
+
+    def revoke_verifier(self, verifier_id: str) -> Dict[str, Any]:
+        """Revoke one source without deleting historical evidence."""
+        return self.client.post(
+            f"/v1/learning/verifiers/{quote(verifier_id, safe='')}/revoke", json={}
+        )
+
+    def create_episode(
+        self,
+        *,
+        policy_key: str,
+        verifier_id: str,
+        idempotency_key: str,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a scoped durable episode; never grants execution permission."""
+        return self.client.post(
+            "/v1/learning/episodes",
+            json={
+                "policy_key": policy_key,
+                "verifier_id": verifier_id,
+                "idempotency_key": idempotency_key,
+                "collection_id": collection_id,
+                "user_id": user_id,
+            },
+        )
+
+    def get_episode(self, episode_id: str, *, offset: int = 0) -> Dict[str, Any]:
+        return self.client.get(
+            f"/v1/learning/episodes/{quote(episode_id, safe='')}",
+            params={"offset": offset},
+        )
+
+    def close_episode(self, episode_id: str, *, status: str) -> Dict[str, Any]:
+        return self.client.post(
+            f"/v1/learning/episodes/{quote(episode_id, safe='')}/close",
+            json={"status": status},
+        )
+
+    def record_execution(
+        self,
+        decision_id: str,
+        *,
+        attempt_id: str,
+        status: str,
+        actual_action_key: str,
+        arguments_digest: str,
+        evidence_digest: Optional[str] = None,
+        occurred_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Record an execution claim, not an instruction to execute."""
+        body = {
+            "attempt_id": attempt_id,
+            "status": status,
+            "actual_action_key": actual_action_key,
+            "arguments_digest": arguments_digest,
+        }
+        if evidence_digest is not None:
+            body["evidence_digest"] = evidence_digest
+        if occurred_at is not None:
+            body["occurred_at"] = occurred_at
+        return self.client.post(
+            f"/v1/learning/decisions/{quote(decision_id, safe='')}/executions",
+            json=body,
+        )
+
+    def assessment(
+        self, decision_id: str, *, evidence_offset: int = 0
+    ) -> Dict[str, Any]:
+        return self.client.get(
+            f"/v1/learning/decisions/{quote(decision_id, safe='')}/assessment",
+            params={"evidence_offset": evidence_offset},
+        )
+
+    def verifier_evidence(self, verifier_id: str, decision_id: str) -> Dict[str, Any]:
+        """Call with the dedicated verifier client, never the actor's credential."""
+        return self.client.get(
+            f"/v1/learning/verifiers/{quote(verifier_id, safe='')}/decisions/{quote(decision_id, safe='')}"
+        )
+
+    def deliver_verified_outcomes(
+        self,
+        verifier_id: str,
+        *,
+        decision_id: str,
+        source_event_id: str,
+        evidence_digest: str,
+        execution_digest: str,
+        observations: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Deliver independently checked observations using the registered source key."""
+        return self.client.post(
+            f"/v1/learning/verifiers/{quote(verifier_id, safe='')}/events",
+            json={
+                "decision_id": decision_id,
+                "source_event_id": source_event_id,
+                "evidence_digest": evidence_digest,
+                "execution_digest": execution_digest,
+                "observations": observations,
+            },
+        )
+
     def get_decision(self, decision_id: str) -> Dict[str, Any]:
         return self.client.get(f"/v1/learning/decisions/{decision_id}")
 
@@ -789,7 +915,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.4.1",
+            "User-Agent": "hebbrix-python/2.5.0",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

@@ -5,7 +5,7 @@ Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 ## Install
 
 ```bash
-pip install hebbrix==2.4.1
+pip install hebbrix==2.5.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
