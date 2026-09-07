@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hebbrix"
-version = "2.4.1"
+version = "2.5.0"
 description = "Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs"
 readme = "README.md"
 requires-python = ">=3.8"
-license = "MIT"
-license-files = ["LICENSE"]
+# Keep source installation compatible with Python 3.8's setuptools release.
+license = {file = "LICENSE"}
 authors = [
     {name = "Hebbrix Team", email = "support@hebbrix.com"}
 ]

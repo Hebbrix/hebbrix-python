@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.0 — 2026-09-07
+
+- Add matching synchronous and asynchronous Evidence Loop methods: owner-managed verifiers, durable episodes, actual-execution claims, protected outcome delivery and evidence assessments.
+- Preserve scope, replay, incomplete-outcome and permission receipts without converting recommendations into execution authority or falling back to caller-reported outcomes.
+- Reject malformed, ambiguous or unknown evidence contracts before exposing unsupported synthesis; retain valid degraded evidence with its abstention signal.
+- Protected ledger methods require the connected Evidence Loop backend. Separate verifier credentials and an independent execution/outcome check remain required; these methods do not execute actions.
+
 ## 2.4.1 — 2026-08-27
 
 - Make every async and sync readiness deadline preserve the original durable
