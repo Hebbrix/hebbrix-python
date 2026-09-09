@@ -1278,6 +1278,36 @@ class ProofLoopResource(BaseResource):
             params={"evidence_offset": evidence_offset},
         )
 
+    async def assess_experience(
+        self, *, candidate: Dict[str, Any], context: Dict[str, Any],
+        collection_id: Optional[str] = None, user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Revalidate an experience hypothesis. Never grants execution permission."""
+        return await self.client.post(
+            "/v1/learning/experiences/assess",
+            json={"candidate": candidate, "context": context,
+                  "collection_id": collection_id, "user_id": user_id},
+        )
+
+    async def experience_context(
+        self, *, memory_collection_id: str, policy_key: str,
+        references: List[Dict[str, Any]], context: Dict[str, Any],
+        evidence_collection_id: Optional[str] = None,
+        user_id: Optional[str] = None, agent_id: Optional[str] = None,
+        run_id: Optional[str] = None, max_context_bytes: int = 16000,
+    ) -> Dict[str, Any]:
+        """Revalidate stored hypotheses. The response is not execution permission."""
+        return await self.client.post(
+            "/v1/learning/experiences/context",
+            json={
+                "memory_collection_id": memory_collection_id,
+                "evidence_collection_id": evidence_collection_id,
+                "user_id": user_id, "agent_id": agent_id, "run_id": run_id,
+                "policy_key": policy_key, "references": references,
+                "context": context, "max_context_bytes": max_context_bytes,
+            },
+        )
+
     async def verifier_evidence(
         self, verifier_id: str, decision_id: str
     ) -> Dict[str, Any]:
@@ -1295,6 +1325,7 @@ class ProofLoopResource(BaseResource):
         evidence_digest: str,
         execution_digest: str,
         observations: List[Dict[str, Any]],
+        evidence_document: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Deliver independently checked observations using the registered source key."""
         return await self.client.post(
@@ -1305,6 +1336,7 @@ class ProofLoopResource(BaseResource):
                 "evidence_digest": evidence_digest,
                 "execution_digest": execution_digest,
                 "observations": observations,
+                **({"evidence_document": evidence_document} if evidence_document is not None else {}),
             },
         )
 

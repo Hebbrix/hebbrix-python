@@ -758,6 +758,36 @@ class SyncProofLoopResource:
             params={"evidence_offset": evidence_offset},
         )
 
+    def assess_experience(
+        self, *, candidate: Dict[str, Any], context: Dict[str, Any],
+        collection_id: Optional[str] = None, user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Revalidate an experience hypothesis. Never grants execution permission."""
+        return self.client.post(
+            "/v1/learning/experiences/assess",
+            json={"candidate": candidate, "context": context,
+                  "collection_id": collection_id, "user_id": user_id},
+        )
+
+    def experience_context(
+        self, *, memory_collection_id: str, policy_key: str,
+        references: List[Dict[str, Any]], context: Dict[str, Any],
+        evidence_collection_id: Optional[str] = None,
+        user_id: Optional[str] = None, agent_id: Optional[str] = None,
+        run_id: Optional[str] = None, max_context_bytes: int = 16000,
+    ) -> Dict[str, Any]:
+        """Revalidate stored hypotheses. The response is not execution permission."""
+        return self.client.post(
+            "/v1/learning/experiences/context",
+            json={
+                "memory_collection_id": memory_collection_id,
+                "evidence_collection_id": evidence_collection_id,
+                "user_id": user_id, "agent_id": agent_id, "run_id": run_id,
+                "policy_key": policy_key, "references": references,
+                "context": context, "max_context_bytes": max_context_bytes,
+            },
+        )
+
     def verifier_evidence(self, verifier_id: str, decision_id: str) -> Dict[str, Any]:
         """Call with the dedicated verifier client, never the actor's credential."""
         return self.client.get(
@@ -773,6 +803,7 @@ class SyncProofLoopResource:
         evidence_digest: str,
         execution_digest: str,
         observations: List[Dict[str, Any]],
+        evidence_document: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Deliver independently checked observations using the registered source key."""
         return self.client.post(
@@ -783,6 +814,7 @@ class SyncProofLoopResource:
                 "evidence_digest": evidence_digest,
                 "execution_digest": execution_digest,
                 "observations": observations,
+                **({"evidence_document": evidence_document} if evidence_document is not None else {}),
             },
         )
 
@@ -915,7 +947,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.5.0",
+            "User-Agent": "hebbrix-python/2.6.0rc1",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -933,6 +965,9 @@ class SyncMemoryClient:
         self.procedural = SyncProceduralResource(self)
         self.search_resource = SyncSearchResource(self)
         self.proofloop = SyncProofLoopResource(self)
+        from hebbrix.workflow import ExperienceWorkflow
+
+        self.experiences = ExperienceWorkflow(self)
 
     @staticmethod
     def _handle_error(response: httpx.Response) -> None:
