@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.6.0rc1 — 2026-09-09 (prerelease)
+
+- Add sync/async native experience programs, reflection jobs, reviewed lesson
+  revisions and one-use execution-permission transports.
+- Bind complete model requests and tool invocations, retain uncertain delivery,
+  and prevent automatic retries of potentially completed side effects.
+- Add the optional bounded OpenAI reflection adapter and `hebbrix-reflect` CLI.
+- Require separately scoped worker/reviewer/executor credentials and the matching
+  `b5c6d7e8f959` backend. That backend is not yet deployed to public production;
+  stable 2.5.0 remains the production recommendation. No autonomous actions are
+  enabled by installing this package.
+
 ## 2.5.0 — 2026-09-07
 
 - Add matching synchronous and asynchronous Evidence Loop methods: owner-managed verifiers, durable episodes, actual-execution claims, protected outcome delivery and evidence assessments.

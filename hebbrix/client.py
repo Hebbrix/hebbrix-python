@@ -79,6 +79,9 @@ class MemoryClient:
         self.corrections = CorrectionsResource(self)
         self.search_resource = SearchResource(self)
         self.proofloop = ProofLoopResource(self)
+        from hebbrix.workflow import AsyncExperienceWorkflow
+
+        self.experiences = AsyncExperienceWorkflow(self)
         self.rl = RLResource(self)
         self.procedural = ProceduralResource(self)
         self.temporal = TemporalResource(self)
@@ -90,7 +93,7 @@ class MemoryClient:
         """Get request headers."""
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.5.0",
+            "User-Agent": "hebbrix-python/2.6.0rc1",
         }
 
         if self.api_key:

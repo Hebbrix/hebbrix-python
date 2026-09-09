@@ -2,10 +2,15 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
+This branch is the **2.6.0rc1 prerelease**. Native experience operations require
+the matching backend schema `b5c6d7e8f959`; they are not yet enabled on the public
+production API. Keep `2.5.0` for the current stable deployment. A prerelease SDK
+does not enable autonomous execution or demonstrate a learning advantage.
+
 ## Install
 
 ```bash
-pip install hebbrix==2.5.0
+pip install hebbrix==2.6.0rc1
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
@@ -125,3 +130,14 @@ The production API publishes exact build and artifact compatibility at
 ## License
 
 MIT. See `LICENSE` in the distribution.
+## Native experience workflow (prerelease)
+
+The current source includes `client.experiences`, bounded reflection workers,
+separate lesson review/revision and explicit one-use execution admission. These
+methods require the matching new backend; the published 2.5.0 release does not
+include this extension. The candidate package supplies `hebbrix-reflect --help`.
+Importing it does not call a model, approve a lesson or execute a tool.
+
+See `docs/native-experience-operations.md` for role scopes,
+uncertain-call recovery, exact-request binding and policy rollback. Do not treat a
+lesson, score, review or issued permit as execution permission.
