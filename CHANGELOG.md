@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.6.0rc3 — 2026-10-02 (prerelease)
+
+- Add scoped one-call policy setup and descriptive learning-report helpers.
+- Add bounded advisor callbacks that log the caller's actual chosen action and
+  supplied behavior distribution; advice never executes or authorizes an action.
+- These helpers require the October 2 outcome-followup backend release or a
+  compatible successor. Check `/v1/release` before using the new endpoints.
+- Learning performance and reliable model compliance with feedback are not
+  established. This release makes no superiority or benchmark claim.
+
 ## 2.6.0rc2 — 2026-10-01 (prerelease)
 
 - Add sync/async context enrollment, revision-checked policy configuration,

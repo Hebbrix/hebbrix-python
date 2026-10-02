@@ -1,6 +1,5 @@
 {
-  "openapi_sha256": "94debc7a5b202125285a8c8c10130fbe33ae4a9bc05af47a6b452be2fe2fa901",
-  "schema_head": "b5c6d7e8f959",
+  "openapi_sha256": "9d454982b1ec7b4e7260a3c739763429b699ae4f6a2984a1d007a215bcfdd4d4",
   "paths": {
     "/": {
       "get": {}
@@ -294,6 +293,7 @@
       "get": {}
     },
     "/v1/decisions/{decision_id}": {
+      "delete": {},
       "get": {}
     },
     "/v1/documents": {
@@ -476,7 +476,31 @@
     "/v1/learning/experiences/assess": {
       "post": {}
     },
+    "/v1/learning/experiences/comparison/candidates/{lesson_id}/revisions": {
+      "post": {}
+    },
     "/v1/learning/experiences/context": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assessment": {
+      "get": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assign": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assignments/{decision_id}/context": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assignments/{decision_id}/dispatch": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/reuse": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/stop": {
       "post": {}
     },
     "/v1/learning/experiences/jobs/{job_id}": {
@@ -486,6 +510,9 @@
       "post": {}
     },
     "/v1/learning/experiences/jobs/{job_id}/dispatch": {
+      "post": {}
+    },
+    "/v1/learning/experiences/jobs/{job_id}/reject-output": {
       "post": {}
     },
     "/v1/learning/experiences/jobs/{job_id}/uncertain": {
@@ -516,6 +543,40 @@
     "/v1/learning/experiences/programs/{program_id}/claim": {
       "post": {}
     },
+    "/v1/learning/experiences/programs/{program_id}/comparison/claim": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/drafts": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/drafts/{draft_id}": {
+      "get": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/jobs/{job_id}/candidates": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/prepare": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/revalidate": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/contrast/claim": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/contrast/prepare": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/contrast/revalidate": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/funded-claim": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/funding": {
+      "get": {},
+      "post": {}
+    },
     "/v1/learning/experiences/programs/{program_id}/lessons": {
       "get": {}
     },
@@ -541,11 +602,28 @@
       "get": {},
       "post": {}
     },
+    "/v1/learning/policies/{policy_key}/advice": {
+      "get": {}
+    },
+    "/v1/learning/policies/{policy_key}/configuration": {
+      "get": {},
+      "put": {}
+    },
+    "/v1/learning/policies/{policy_key}/context-schema": {
+      "get": {},
+      "put": {}
+    },
     "/v1/learning/policies/{policy_key}/evaluate": {
       "post": {}
     },
     "/v1/learning/policies/{policy_key}/insights": {
       "get": {}
+    },
+    "/v1/learning/policies/{policy_key}/report": {
+      "get": {}
+    },
+    "/v1/learning/policies/{policy_key}/setup": {
+      "post": {}
     },
     "/v1/learning/proof-key": {
       "get": {}
@@ -557,6 +635,9 @@
       "get": {}
     },
     "/v1/learning/verifiers/{verifier_id}/events": {
+      "post": {}
+    },
+    "/v1/learning/verifiers/{verifier_id}/events/{event_id}/artifact": {
       "post": {}
     },
     "/v1/learning/verifiers/{verifier_id}/revoke": {
@@ -1035,5 +1116,6 @@
     "/v1/working-memory/trim/{session_id}": {
       "post": {}
     }
-  }
+  },
+  "schema_head": "e5f6g7h8i868"
 }

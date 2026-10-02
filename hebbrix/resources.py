@@ -1378,6 +1378,45 @@ class ProofLoopResource(BaseResource):
             },
         )
 
+    async def setup_policy(self, policy_key: str, *, context_schema: Dict[str, Any],
+                           actions: Dict[str, Any], collection_id: Optional[str] = None,
+                           user_id: Optional[str] = None) -> Dict[str, Any]:
+        """One atomic setup call. Risk/target/description are supplied by the owner.
+        Only explicitly low-risk exploration_allowed actions learn by default.
+        This neither permits execution nor changes an existing policy.
+        """
+        return await self.client.post(f"/v1/learning/policies/{quote(policy_key, safe='')}/setup",
+            json=dict(collection_id=collection_id, user_id=user_id,
+                context_schema=context_schema, configuration=dict(actions=actions)))
+
+    async def learning_report(self, policy_key: str, *, days: int = 7,
+                              collection_id: Optional[str] = None,
+                              user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Bounded descriptive report, not a causal uplift or execution guarantee."""
+        return await self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/report",
+            params={k: v for k, v in dict(days=days, collection_id=collection_id,
+                user_id=user_id).items() if v is not None})
+
+    async def decide_with_advice(self, *, policy_key: str, candidates: List[Dict[str, Any]],
+                                 context: Dict[str, Any], advisor,
+                                 collection_id: Optional[str] = None,
+                                 user_id: Optional[str] = None,
+                                 idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+        """Read evidence, call your advisor once, then log its explicit choice.
+        advisor must return chosen_action_key, action_probability and the complete
+        behavior_probabilities. No model confidence is invented as a propensity.
+        No tool execution or outcome is recorded by this helper.
+        """
+        card = await self.policy_advice(policy_key, context=context,
+            collection_id=collection_id, user_id=user_id)
+        selection = await advisor(card)
+        if not isinstance(selection, dict) or set(selection) != {
+            "chosen_action_key", "action_probability", "behavior_probabilities"}:
+            raise ValueError("advisor must return the choice and its actual complete logging distribution")
+        return await self.decide(policy_key=policy_key, candidates=candidates, context=context,
+            collection_id=collection_id, user_id=user_id, idempotency_key=idempotency_key,
+            mode="observe", **selection)
+
     async def configure_policy(self, policy_key: str, *, configuration: Dict[str, Any],
                                expected_revision: int = 0, collection_id: Optional[str] = None,
                                user_id: Optional[str] = None) -> Dict[str, Any]:
