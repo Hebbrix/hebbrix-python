@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.0rc4 — 2026-10-02 (prerelease)
+
+- Correct both HTTP User-Agent version strings and add a source-version parity
+  check. The previously published rc3 remains unchanged; helper behavior is
+  otherwise identical.
+
 ## 2.6.0rc3 — 2026-10-02 (prerelease)
 
 - Add scoped one-call policy setup and descriptive learning-report helpers.
