@@ -2,15 +2,15 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-This branch is the **2.6.0rc1 prerelease**. Native experience operations require
-the matching backend schema `b5c6d7e8f959`; they are not yet enabled on the public
-production API. Keep `2.5.0` for the current stable deployment. A prerelease SDK
-does not enable autonomous execution or demonstrate a learning advantage.
+This branch is the **2.6.0rc2 prerelease**. The new policy configuration and
+advice helpers require backend schema `e5f6g7h8i868` or a compatible successor.
+A prerelease SDK does not enable autonomous execution. ASK/REVIEW/ACT is advice;
+an action still requires independent permission.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.6.0rc1
+pip install hebbrix==2.6.0rc2
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
@@ -19,6 +19,15 @@ ProofLoop workflows; advanced temporal, working-memory, consolidation,
 memory-tool, and RL resources are currently async-only.
 
 ## Quick start
+
+Both clients expose `proofloop.register_context_schema`, `context_schema`,
+`configure_policy`, `policy_configuration`, `policy_advice` and `action_advice`.
+Enroll context before recording decisions. Configuration uses `expected_revision`
+for compare-and-swap; do not retry a conflict blindly. Exploration remains an
+explicit low-risk opt-in. `action_advice` takes the exact configured description,
+policy/action IDs and context, and maps `user_id` to the confidence endpoint's
+`end_user_id`. For the complete request shapes, see the
+[learning guide](https://www.hebbrix.com/docs/learning).
 
 ```python
 import asyncio

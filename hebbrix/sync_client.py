@@ -821,6 +821,71 @@ class SyncProofLoopResource:
     def get_decision(self, decision_id: str) -> Dict[str, Any]:
         return self.client.get(f"/v1/learning/decisions/{decision_id}")
 
+    def register_context_schema(
+        self,
+        policy_key: str,
+        *,
+        context_schema: Dict[str, Any],
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Enroll before any decisions; changing learning semantics needs a new policy."""
+        return self.client.request(
+            "PUT",
+            f"/v1/learning/policies/{quote(policy_key, safe='')}/context-schema",
+            json={
+                "context_schema": context_schema,
+                "collection_id": collection_id,
+                "user_id": user_id,
+            },
+        )
+
+    def context_schema(
+        self,
+        policy_key: str,
+        *,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.client.get(
+            f"/v1/learning/policies/{quote(policy_key, safe='')}/context-schema",
+            params={
+                k: v
+                for k, v in {"collection_id": collection_id, "user_id": user_id}.items()
+                if v is not None
+            },
+        )
+
+    def configure_policy(self, policy_key: str, *, configuration: Dict[str, Any],
+                               expected_revision: int = 0, collection_id: Optional[str] = None,
+                               user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Explicit risk/strategy opt-in, revision-checked; not execution permission."""
+        return self.client.request("PUT",
+            f"/v1/learning/policies/{quote(policy_key, safe='')}/configuration",
+            json=dict(configuration=configuration, expected_revision=expected_revision,
+                      collection_id=collection_id, user_id=user_id))
+
+    def policy_configuration(self, policy_key: str, *, collection_id: Optional[str] = None,
+                                   user_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/configuration",
+            params={k: v for k, v in dict(collection_id=collection_id, user_id=user_id).items() if v is not None})
+
+    def policy_advice(self, policy_key: str, *, context: Optional[Dict[str, Any]] = None,
+                            collection_id: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Read caller-reported evidence and a candidate, never an execution permit."""
+        return self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/advice",
+            params={k: v for k, v in dict(context=json.dumps(context or {}),
+                collection_id=collection_id, user_id=user_id).items() if v is not None})
+
+    def action_advice(self, query: str, *, policy_key: str, action_key: str,
+                           context: Optional[Dict[str, Any]] = None, collection_id: Optional[str] = None,
+                           user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Read ASK/REVIEW/ACT advice for an exact configured action. ACT is not permission."""
+        return self.client.get("/v1/confidence", params={k: v for k, v in
+            dict(query=query, policy_key=policy_key, action_key=action_key,
+                 context=json.dumps(context or {}), collection_id=collection_id,
+                 end_user_id=user_id).items() if v is not None})
+
     def define_metric(
         self,
         *,
@@ -947,7 +1012,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.0rc1",
+            "User-Agent": "hebbrix-python/2.6.0rc2",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
