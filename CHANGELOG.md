@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.0rc5 — 2026-10-03 (prerelease)
+
+- Snapshot advisor context/candidates and reject scope overrides or mutable identities.
+- Validate the complete finite logging distribution against original candidates before writing.
+- Invoke the callback once; preserve caller probabilities without normalization or retries.
+- Caller probabilities are not authenticated randomization; no execution authority or measured learning-performance gain is claimed.
+
 ## 2.6.0rc4 — 2026-10-02 (prerelease)
 
 - Correct both HTTP User-Agent version strings and add a source-version parity

@@ -5,7 +5,7 @@ production OpenAPI and ``GET /v1/users/me/capabilities``. The experimental
 World Model is intentionally absent from this release.
 """
 
-__version__ = "2.6.0rc4"
+__version__ = "2.6.0rc5"
 __author__ = "Hebbrix Team"
 __license__ = "MIT"
 
