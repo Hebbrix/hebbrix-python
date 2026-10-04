@@ -32,3 +32,19 @@ async def test_sync_async_policy_wire_parity(method, args, kwargs, verb, path):
     if method == "action_advice":
         assert call.kwargs["params"]["end_user_id"] == "scoped"
         assert "user_id" not in call.kwargs["params"]
+
+
+@pytest.mark.asyncio
+async def test_value_and_feature_setup_sync_async_parity():
+    sync, asynchronous = Mock(), Mock()
+    sync.post.return_value = {"execution_permitted": False}
+    asynchronous.post = AsyncMock(return_value={"execution_permitted": False})
+    values = dict(context_schema={"version": "v1", "fields": {}},
+        actions={"a": {"risk_tier": "high"}},
+        configuration={"schema_version": "outcome-policy-v3", "contextual_model": "linear_optional"},
+        value_objective={"success_value": 10, "max_cost": 20, "cost_unit": "USD"})
+    assert SyncProofLoopResource(sync).setup_policy("p", **values) == await ProofLoopResource(asynchronous).setup_policy("p", **values)
+    assert sync.post.call_args == asynchronous.post.call_args
+    body = sync.post.call_args.kwargs["json"]
+    assert body["configuration"]["actions"] == values["actions"]
+    assert body["value_objective"] == values["value_objective"]

@@ -2,21 +2,30 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-This branch is the **2.6.0rc2 prerelease**. The new policy configuration and
+This branch is the **2.6.0 stable SDK**. The new policy configuration and
 advice helpers require backend schema `e5f6g7h8i868` or a compatible successor.
-A prerelease SDK does not enable autonomous execution. ASK/REVIEW/ACT is advice;
+A stable SDK does not qualify experimental learning or enable autonomous execution. ASK/REVIEW/ACT is advice;
 an action still requires independent permission.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.6.0rc2
+pip install hebbrix==2.6.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
 supports the core collection, memory, search, correction, procedure, and
 ProofLoop workflows; advanced temporal, working-memory, consolidation,
 memory-tool, and RL resources are currently async-only.
+
+The runtime requires `httpx>=0.25.0,<1`; incompatible 1.x prereleases are excluded.
+For the matching Round 5 backend, `setup_policy` accepts explicit `configuration`
+options for versioned change response and declared optional-field sharing, plus
+`value_objective={"success_value":10,"max_cost":20,"cost_unit":"USD"}`.
+Report both actual success and cost with `record_outcome`. Chat follow-up capture
+requires `features.learning: true` and an exact `outcome_followup.decision_id`;
+captured signals are provisional, not verified execution or autonomy evidence.
+These options require the matching runtime, not only the unchanged database schema.
 
 ## Quick start
 

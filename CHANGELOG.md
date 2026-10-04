@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.0 — 2026-10-04 (stable SDK)
+
+- Bound runtime HTTPX to `>=0.25.0,<1`, excluding incompatible 1.x prereleases.
+- Add sync/async atomic setup options for explicit policy configuration and built-in success-minus-cost metrics.
+- Keep advisor input/probability validation, scope and protected evidence transports unchanged.
+- Backend v3 learning methods remain explicit experimental opt-ins. Stable packaging does not establish performance, calibrated confidence or execution permission.
+
 ## 2.6.0rc5 — 2026-10-03 (prerelease)
 
 - Snapshot advisor context/candidates and reject scope overrides or mutable identities.

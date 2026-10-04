@@ -1381,14 +1381,18 @@ class ProofLoopResource(BaseResource):
 
     async def setup_policy(self, policy_key: str, *, context_schema: Dict[str, Any],
                            actions: Dict[str, Any], collection_id: Optional[str] = None,
-                           user_id: Optional[str] = None) -> Dict[str, Any]:
+                           user_id: Optional[str] = None,
+                           configuration: Optional[Dict[str, Any]] = None,
+                           value_objective: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """One atomic setup call. Risk/target/description are supplied by the owner.
         Only explicitly low-risk exploration_allowed actions learn by default.
         This neither permits execution nor changes an existing policy.
         """
         return await self.client.post(f"/v1/learning/policies/{quote(policy_key, safe='')}/setup",
             json=dict(collection_id=collection_id, user_id=user_id,
-                context_schema=context_schema, configuration=dict(actions=actions)))
+                context_schema=context_schema,
+                configuration={**(configuration or {}), "actions": actions},
+                **({"value_objective": value_objective} if value_objective is not None else {})))
 
     async def learning_report(self, policy_key: str, *, days: int = 7,
                               collection_id: Optional[str] = None,

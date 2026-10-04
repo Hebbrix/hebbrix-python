@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hebbrix"
-version = "2.6.0rc5"
+version = "2.6.0"
 description = "Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -33,7 +33,7 @@ keywords = [
     "working-memory"
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -48,7 +48,7 @@ classifiers = [
     "Framework :: AsyncIO",
 ]
 dependencies = [
-    "httpx>=0.25.0",
+    "httpx>=0.25.0,<1",
     "requests>=2.31.0",
 ]
 
