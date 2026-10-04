@@ -18,7 +18,7 @@ from hebbrix.exceptions import (
     ValidationError,
 )
 from hebbrix.resources import _canonical_search_envelope, _memory_create_payload
-from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope
+from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope, _validate_advisor_horizon
 
 
 class SyncCollectionsResource:
@@ -884,7 +884,9 @@ class SyncProofLoopResource:
                                  context: Dict[str, Any], advisor,
                                  collection_id: Optional[str] = None,
                                  user_id: Optional[str] = None,
-                                 idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+                                 idempotency_key: Optional[str] = None,
+                                 remaining_decisions: Optional[int] = None,
+                                 max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
         """Read evidence, call your advisor once, then log its explicit choice.
         advisor must return chosen_action_key, action_probability and the complete
         behavior_probabilities. No model confidence is invented as a propensity.
@@ -895,11 +897,13 @@ class SyncProofLoopResource:
         or outcome is recorded by this helper.
         """
         _validate_advisor_scope(policy_key, collection_id, user_id, idempotency_key)
+        _validate_advisor_horizon(remaining_decisions, max_pilot_decisions)
         candidates, context, keys = _snapshot_advisor_inputs(candidates, context)
         if not callable(advisor):
             raise ValueError("advisor must be callable")
         card = self.policy_advice(policy_key, context=context,
-            collection_id=collection_id, user_id=user_id)
+            collection_id=collection_id, user_id=user_id,
+            remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions)
         selection = _validated_advisor_selection(advisor(card), keys)
         return self.decide(policy_key=policy_key, candidates=candidates, context=context,
             collection_id=collection_id, user_id=user_id, idempotency_key=idempotency_key,
@@ -920,11 +924,14 @@ class SyncProofLoopResource:
             params={k: v for k, v in dict(collection_id=collection_id, user_id=user_id).items() if v is not None})
 
     def policy_advice(self, policy_key: str, *, context: Optional[Dict[str, Any]] = None,
-                            collection_id: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
+                      collection_id: Optional[str] = None, user_id: Optional[str] = None,
+                      remaining_decisions: Optional[int] = None,
+                      max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
         """Read caller-reported evidence and a candidate, never an execution permit."""
         return self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/advice",
             params={k: v for k, v in dict(context=json.dumps(context or {}),
-                collection_id=collection_id, user_id=user_id).items() if v is not None})
+                collection_id=collection_id, user_id=user_id,
+                remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions).items() if v is not None})
 
     def action_advice(self, query: str, *, policy_key: str, action_key: str,
                            context: Optional[Dict[str, Any]] = None, collection_id: Optional[str] = None,
@@ -1061,7 +1068,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.0",
+            "User-Agent": "hebbrix-python/2.6.1",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

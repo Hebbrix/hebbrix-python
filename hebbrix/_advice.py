@@ -5,6 +5,13 @@ import math
 import re
 
 
+def _validate_advisor_horizon(remaining_decisions, max_pilot_decisions):
+    for field, value, maximum in (("remaining_decisions", remaining_decisions, 10000),
+                                  ("max_pilot_decisions", max_pilot_decisions, 8)):
+        if value is not None and (type(value) is not int or not 1 <= value <= maximum):
+            raise ValueError("{} must be an integer within the API limit".format(field))
+
+
 def _validate_advisor_scope(policy_key, collection_id, user_id, idempotency_key):
     if (
         type(policy_key) is not str

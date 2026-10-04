@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.1 — 2026-10-04 (advisory horizon helpers)
+
+- Carry optional remaining_decisions and max_pilot_decisions through evidence reads and the once-only advisor callback.
+- Keep actual caller distribution validation, owner scope and observe-mode logging unchanged.
+- New backend v3 controls remain explicit experimental opt-ins; these helpers do not execute actions or establish performance, calibration or superiority.
+
 ## 2.6.0 — 2026-10-04 (stable SDK)
 
 - Bound runtime HTTPX to `>=0.25.0,<1`, excluding incompatible 1.x prereleases.

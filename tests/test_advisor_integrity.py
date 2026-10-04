@@ -62,6 +62,28 @@ def transport(kind):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["sync", "async"])
+async def test_pilot_horizon_is_advice_only_not_a_decision_input(kind):
+    client = transport(kind)
+    await invoke(kind, client, {**inputs(), "remaining_decisions": 80, "max_pilot_decisions": 2}, Mock(return_value=choice()))
+    query = client.get.call_args.kwargs["params"]
+    assert query["remaining_decisions"] == 80 and query["max_pilot_decisions"] == 2
+    body = client.post.call_args.kwargs["json"]
+    assert "remaining_decisions" not in body and "max_pilot_decisions" not in body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["sync", "async"])
+@pytest.mark.parametrize("horizon", [True, 0, 10001, 1.5])
+async def test_invalid_horizon_fails_before_advisor_or_reads(kind, horizon):
+    client, advisor = transport(kind), Mock(return_value=choice())
+    with pytest.raises(ValueError):
+        await invoke(kind, client, {**inputs(), "remaining_decisions": horizon}, advisor)
+    client.get.assert_not_called()
+    advisor.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["sync", "async"])
 @pytest.mark.parametrize("stage", ["evidence_read", "advisor"])
 async def test_original_nested_inputs_survive_mutation(kind, stage):
     client, params, selected = transport(kind), inputs(), choice()

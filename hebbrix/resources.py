@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from hebbrix.exceptions import IndexingTimeoutError
 from hebbrix.models import SearchSafetyEnvelope
-from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope
+from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope, _validate_advisor_horizon
 
 if TYPE_CHECKING:
     from hebbrix.client import MemoryClient
@@ -1406,7 +1406,9 @@ class ProofLoopResource(BaseResource):
                                  context: Dict[str, Any], advisor,
                                  collection_id: Optional[str] = None,
                                  user_id: Optional[str] = None,
-                                 idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+                                 idempotency_key: Optional[str] = None,
+                                 remaining_decisions: Optional[int] = None,
+                                 max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
         """Read evidence, call your advisor once, then log its explicit choice.
         advisor must return chosen_action_key, action_probability and the complete
         behavior_probabilities. No model confidence is invented as a propensity.
@@ -1417,11 +1419,13 @@ class ProofLoopResource(BaseResource):
         or outcome is recorded by this helper.
         """
         _validate_advisor_scope(policy_key, collection_id, user_id, idempotency_key)
+        _validate_advisor_horizon(remaining_decisions, max_pilot_decisions)
         candidates, context, keys = _snapshot_advisor_inputs(candidates, context)
         if not callable(advisor):
             raise ValueError("advisor must be callable")
         card = await self.policy_advice(policy_key, context=context,
-            collection_id=collection_id, user_id=user_id)
+            collection_id=collection_id, user_id=user_id,
+            remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions)
         selection = _validated_advisor_selection(await advisor(card), keys)
         return await self.decide(policy_key=policy_key, candidates=candidates, context=context,
             collection_id=collection_id, user_id=user_id, idempotency_key=idempotency_key,
@@ -1442,11 +1446,14 @@ class ProofLoopResource(BaseResource):
             params={k: v for k, v in dict(collection_id=collection_id, user_id=user_id).items() if v is not None})
 
     async def policy_advice(self, policy_key: str, *, context: Optional[Dict[str, Any]] = None,
-                            collection_id: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
+                            collection_id: Optional[str] = None, user_id: Optional[str] = None,
+                            remaining_decisions: Optional[int] = None,
+                            max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
         """Read caller-reported evidence and a candidate, never an execution permit."""
         return await self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/advice",
             params={k: v for k, v in dict(context=json.dumps(context or {}),
-                collection_id=collection_id, user_id=user_id).items() if v is not None})
+                collection_id=collection_id, user_id=user_id,
+                remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions).items() if v is not None})
 
     async def action_advice(self, query: str, *, policy_key: str, action_key: str,
                            context: Optional[Dict[str, Any]] = None, collection_id: Optional[str] = None,
