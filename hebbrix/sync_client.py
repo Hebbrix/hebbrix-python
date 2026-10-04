@@ -18,6 +18,7 @@ from hebbrix.exceptions import (
     ValidationError,
 )
 from hebbrix.resources import _canonical_search_envelope, _memory_create_payload
+from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope
 
 
 class SyncCollectionsResource:
@@ -758,6 +759,36 @@ class SyncProofLoopResource:
             params={"evidence_offset": evidence_offset},
         )
 
+    def assess_experience(
+        self, *, candidate: Dict[str, Any], context: Dict[str, Any],
+        collection_id: Optional[str] = None, user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Revalidate an experience hypothesis. Never grants execution permission."""
+        return self.client.post(
+            "/v1/learning/experiences/assess",
+            json={"candidate": candidate, "context": context,
+                  "collection_id": collection_id, "user_id": user_id},
+        )
+
+    def experience_context(
+        self, *, memory_collection_id: str, policy_key: str,
+        references: List[Dict[str, Any]], context: Dict[str, Any],
+        evidence_collection_id: Optional[str] = None,
+        user_id: Optional[str] = None, agent_id: Optional[str] = None,
+        run_id: Optional[str] = None, max_context_bytes: int = 16000,
+    ) -> Dict[str, Any]:
+        """Revalidate stored hypotheses. The response is not execution permission."""
+        return self.client.post(
+            "/v1/learning/experiences/context",
+            json={
+                "memory_collection_id": memory_collection_id,
+                "evidence_collection_id": evidence_collection_id,
+                "user_id": user_id, "agent_id": agent_id, "run_id": run_id,
+                "policy_key": policy_key, "references": references,
+                "context": context, "max_context_bytes": max_context_bytes,
+            },
+        )
+
     def verifier_evidence(self, verifier_id: str, decision_id: str) -> Dict[str, Any]:
         """Call with the dedicated verifier client, never the actor's credential."""
         return self.client.get(
@@ -773,6 +804,7 @@ class SyncProofLoopResource:
         evidence_digest: str,
         execution_digest: str,
         observations: List[Dict[str, Any]],
+        evidence_document: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Deliver independently checked observations using the registered source key."""
         return self.client.post(
@@ -783,11 +815,125 @@ class SyncProofLoopResource:
                 "evidence_digest": evidence_digest,
                 "execution_digest": execution_digest,
                 "observations": observations,
+                **({"evidence_document": evidence_document} if evidence_document is not None else {}),
             },
         )
 
     def get_decision(self, decision_id: str) -> Dict[str, Any]:
         return self.client.get(f"/v1/learning/decisions/{decision_id}")
+
+    def register_context_schema(
+        self,
+        policy_key: str,
+        *,
+        context_schema: Dict[str, Any],
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Enroll before any decisions; changing learning semantics needs a new policy."""
+        return self.client.request(
+            "PUT",
+            f"/v1/learning/policies/{quote(policy_key, safe='')}/context-schema",
+            json={
+                "context_schema": context_schema,
+                "collection_id": collection_id,
+                "user_id": user_id,
+            },
+        )
+
+    def context_schema(
+        self,
+        policy_key: str,
+        *,
+        collection_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.client.get(
+            f"/v1/learning/policies/{quote(policy_key, safe='')}/context-schema",
+            params={
+                k: v
+                for k, v in {"collection_id": collection_id, "user_id": user_id}.items()
+                if v is not None
+            },
+        )
+
+    def setup_policy(self, policy_key: str, *, context_schema: Dict[str, Any],
+                           actions: Dict[str, Any], collection_id: Optional[str] = None,
+                           user_id: Optional[str] = None,
+                           configuration: Optional[Dict[str, Any]] = None,
+                           value_objective: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """One atomic setup call. Risk/target/description are supplied by the owner.
+        Only explicitly low-risk exploration_allowed actions learn by default.
+        This neither permits execution nor changes an existing policy.
+        """
+        return self.client.post(f"/v1/learning/policies/{quote(policy_key, safe='')}/setup",
+            json=dict(collection_id=collection_id, user_id=user_id,
+                context_schema=context_schema,
+                configuration={**(configuration or {}), "actions": actions},
+                **({"value_objective": value_objective} if value_objective is not None else {})))
+
+    def learning_report(self, policy_key: str, *, days: int = 7,
+                              collection_id: Optional[str] = None,
+                              user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Bounded descriptive report, not a causal uplift or execution guarantee."""
+        return self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/report",
+            params={k: v for k, v in dict(days=days, collection_id=collection_id,
+                user_id=user_id).items() if v is not None})
+
+    def decide_with_advice(self, *, policy_key: str, candidates: List[Dict[str, Any]],
+                                 context: Dict[str, Any], advisor,
+                                 collection_id: Optional[str] = None,
+                                 user_id: Optional[str] = None,
+                                 idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+        """Read evidence, call your advisor once, then log its explicit choice.
+        advisor must return chosen_action_key, action_probability and the complete
+        behavior_probabilities. No model confidence is invented as a propensity.
+        Inputs are detached before reading evidence; callback mutations cannot
+        change the logged scope/candidates/context. Malformed distributions fail
+        before logging, without retries or normalization. Caller probabilities
+        remain caller-reported, not authenticated randomization. No tool execution
+        or outcome is recorded by this helper.
+        """
+        _validate_advisor_scope(policy_key, collection_id, user_id, idempotency_key)
+        candidates, context, keys = _snapshot_advisor_inputs(candidates, context)
+        if not callable(advisor):
+            raise ValueError("advisor must be callable")
+        card = self.policy_advice(policy_key, context=context,
+            collection_id=collection_id, user_id=user_id)
+        selection = _validated_advisor_selection(advisor(card), keys)
+        return self.decide(policy_key=policy_key, candidates=candidates, context=context,
+            collection_id=collection_id, user_id=user_id, idempotency_key=idempotency_key,
+            mode="observe", **selection)
+
+    def configure_policy(self, policy_key: str, *, configuration: Dict[str, Any],
+                               expected_revision: int = 0, collection_id: Optional[str] = None,
+                               user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Explicit risk/strategy opt-in, revision-checked; not execution permission."""
+        return self.client.request("PUT",
+            f"/v1/learning/policies/{quote(policy_key, safe='')}/configuration",
+            json=dict(configuration=configuration, expected_revision=expected_revision,
+                      collection_id=collection_id, user_id=user_id))
+
+    def policy_configuration(self, policy_key: str, *, collection_id: Optional[str] = None,
+                                   user_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/configuration",
+            params={k: v for k, v in dict(collection_id=collection_id, user_id=user_id).items() if v is not None})
+
+    def policy_advice(self, policy_key: str, *, context: Optional[Dict[str, Any]] = None,
+                            collection_id: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Read caller-reported evidence and a candidate, never an execution permit."""
+        return self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/advice",
+            params={k: v for k, v in dict(context=json.dumps(context or {}),
+                collection_id=collection_id, user_id=user_id).items() if v is not None})
+
+    def action_advice(self, query: str, *, policy_key: str, action_key: str,
+                           context: Optional[Dict[str, Any]] = None, collection_id: Optional[str] = None,
+                           user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Read ASK/REVIEW/ACT advice for an exact configured action. ACT is not permission."""
+        return self.client.get("/v1/confidence", params={k: v for k, v in
+            dict(query=query, policy_key=policy_key, action_key=action_key,
+                 context=json.dumps(context or {}), collection_id=collection_id,
+                 end_user_id=user_id).items() if v is not None})
 
     def define_metric(
         self,
@@ -915,7 +1061,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.5.0",
+            "User-Agent": "hebbrix-python/2.6.0",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -933,6 +1079,9 @@ class SyncMemoryClient:
         self.procedural = SyncProceduralResource(self)
         self.search_resource = SyncSearchResource(self)
         self.proofloop = SyncProofLoopResource(self)
+        from hebbrix.workflow import ExperienceWorkflow
+
+        self.experiences = ExperienceWorkflow(self)
 
     @staticmethod
     def _handle_error(response: httpx.Response) -> None:

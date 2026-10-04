@@ -4,10 +4,8 @@ import inspect
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
 from hebbrix.resources import ProofLoopResource
 from hebbrix.sync_client import SyncProofLoopResource
-
 
 SCOPE = {
     "policy_key": "workflow.choice",
@@ -36,6 +34,31 @@ CLAIM = {
 }
 
 CASES = [
+    (
+        "experience_context",
+        (),
+        {
+            "memory_collection_id": "lessons", "evidence_collection_id": "facts",
+            "user_id": "end-user", "agent_id": "agent", "run_id": "run",
+            "policy_key": "workflow.choice",
+            "references": [{"memory_id": "lesson", "record_digest": "a" * 64}],
+            "context": {"stateful": True}, "max_context_bytes": 8000,
+        },
+        "post",
+        "/v1/learning/experiences/context",
+    ),
+    (
+        "assess_experience",
+        (),
+        {
+            "candidate": {"lesson": "untrusted hypothesis"},
+            "context": {"stateful": True},
+            "collection_id": "collection",
+            "user_id": "end-user",
+        },
+        "post",
+        "/v1/learning/experiences/assess",
+    ),
     (
         "register_verifier",
         (),

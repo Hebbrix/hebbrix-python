@@ -1,5 +1,56 @@
 # Changelog
 
+## 2.6.0 — 2026-10-04 (stable SDK)
+
+- Bound runtime HTTPX to `>=0.25.0,<1`, excluding incompatible 1.x prereleases.
+- Add sync/async atomic setup options for explicit policy configuration and built-in success-minus-cost metrics.
+- Keep advisor input/probability validation, scope and protected evidence transports unchanged.
+- Backend v3 learning methods remain explicit experimental opt-ins. Stable packaging does not establish performance, calibrated confidence or execution permission.
+
+## 2.6.0rc5 — 2026-10-03 (prerelease)
+
+- Snapshot advisor context/candidates and reject scope overrides or mutable identities.
+- Validate the complete finite logging distribution against original candidates before writing.
+- Invoke the callback once; preserve caller probabilities without normalization or retries.
+- Caller probabilities are not authenticated randomization; no execution authority or measured learning-performance gain is claimed.
+
+## 2.6.0rc4 — 2026-10-02 (prerelease)
+
+- Correct both HTTP User-Agent version strings and add a source-version parity
+  check. The previously published rc3 remains unchanged; helper behavior is
+  otherwise identical.
+
+## 2.6.0rc3 — 2026-10-02 (prerelease)
+
+- Add scoped one-call policy setup and descriptive learning-report helpers.
+- Add bounded advisor callbacks that log the caller's actual chosen action and
+  supplied behavior distribution; advice never executes or authorizes an action.
+- These helpers require the October 2 outcome-followup backend release or a
+  compatible successor. Check `/v1/release` before using the new endpoints.
+- Learning performance and reliable model compliance with feedback are not
+  established. This release makes no superiority or benchmark claim.
+
+## 2.6.0rc2 — 2026-10-01 (prerelease)
+
+- Add sync/async context enrollment, revision-checked policy configuration,
+  scoped evidence cards and exact action-advice helpers.
+- Preserve collection/end-user scope and JSON context. ACT remains advisory;
+  callers must independently authorize external actions.
+- Policy configuration/advice requires backend `e5f6g7h8i868` or a compatible
+  successor. Existing protected workflow transports are unchanged.
+
+## 2.6.0rc1 — 2026-09-09 (prerelease)
+
+- Add sync/async native experience programs, reflection jobs, reviewed lesson
+  revisions and one-use execution-permission transports.
+- Bind complete model requests and tool invocations, retain uncertain delivery,
+  and prevent automatic retries of potentially completed side effects.
+- Add the optional bounded OpenAI reflection adapter and `hebbrix-reflect` CLI.
+- Require separately scoped worker/reviewer/executor credentials and the matching
+  `b5c6d7e8f959` backend. That backend is not yet deployed to public production;
+  stable 2.5.0 remains the production recommendation. No autonomous actions are
+  enabled by installing this package.
+
 ## 2.5.0 — 2026-09-07
 
 - Add matching synchronous and asynchronous Evidence Loop methods: owner-managed verifiers, durable episodes, actual-execution claims, protected outcome delivery and evidence assessments.

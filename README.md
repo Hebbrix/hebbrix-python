@@ -2,10 +2,15 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
+This branch is the **2.6.0 stable SDK**. The new policy configuration and
+advice helpers require backend schema `e5f6g7h8i868` or a compatible successor.
+A stable SDK does not qualify experimental learning or enable autonomous execution. ASK/REVIEW/ACT is advice;
+an action still requires independent permission.
+
 ## Install
 
 ```bash
-pip install hebbrix==2.5.0
+pip install hebbrix==2.6.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
@@ -13,7 +18,37 @@ supports the core collection, memory, search, correction, procedure, and
 ProofLoop workflows; advanced temporal, working-memory, consolidation,
 memory-tool, and RL resources are currently async-only.
 
+The runtime requires `httpx>=0.25.0,<1`; incompatible 1.x prereleases are excluded.
+For the matching Round 5 backend, `setup_policy` accepts explicit `configuration`
+options for versioned change response and declared optional-field sharing, plus
+`value_objective={"success_value":10,"max_cost":20,"cost_unit":"USD"}`.
+Report both actual success and cost with `record_outcome`. Chat follow-up capture
+requires `features.learning: true` and an exact `outcome_followup.decision_id`;
+captured signals are provisional, not verified execution or autonomy evidence.
+These options require the matching runtime, not only the unchanged database schema.
+
 ## Quick start
+
+October 2 follow-up: `proofloop.setup_policy` atomically creates a new
+context/schema policy with explicitly declared low-risk exploration; existing
+policies are not migrated automatically. `learning_report` reads a bounded,
+scoped descriptive report, not proven uplift. `decide_with_advice` reads an
+evidence card, invokes the supplied advisor once and logs its actual choice and
+probabilities. `decide` accepts bounded `prior_action` / `prior_strength` for one
+server-selected decision; this is not outcome evidence. These new helpers and
+structured paraphrase matching require the matching October 2 outcome-followup
+backend, not merely its database schema; inspect `/v1/release` before use.
+Nothing here grants permission to execute. Learning performance and reliable
+model compliance with feedback are not established.
+
+Both clients expose `proofloop.register_context_schema`, `context_schema`,
+`configure_policy`, `policy_configuration`, `policy_advice` and `action_advice`.
+Enroll context before recording decisions. Configuration uses `expected_revision`
+for compare-and-swap; do not retry a conflict blindly. Exploration remains an
+explicit low-risk opt-in. `action_advice` takes the exact configured description,
+policy/action IDs and context, and maps `user_id` to the confidence endpoint's
+`end_user_id`. For the complete request shapes, see the
+[learning guide](https://www.hebbrix.com/docs/learning).
 
 ```python
 import asyncio
@@ -125,3 +160,14 @@ The production API publishes exact build and artifact compatibility at
 ## License
 
 MIT. See `LICENSE` in the distribution.
+## Native experience workflow (prerelease)
+
+The current source includes `client.experiences`, bounded reflection workers,
+separate lesson review/revision and explicit one-use execution admission. These
+methods require the matching new backend; the published 2.5.0 release does not
+include this extension. The candidate package supplies `hebbrix-reflect --help`.
+Importing it does not call a model, approve a lesson or execute a tool.
+
+See `docs/native-experience-operations.md` for role scopes,
+uncertain-call recovery, exact-request binding and policy rollback. Do not treat a
+lesson, score, review or issued permit as execution permission.

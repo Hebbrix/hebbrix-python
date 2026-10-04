@@ -1,0 +1,1121 @@
+{
+  "openapi_sha256": "9d454982b1ec7b4e7260a3c739763429b699ae4f6a2984a1d007a215bcfdd4d4",
+  "paths": {
+    "/": {
+      "get": {}
+    },
+    "/benchmarks/locomo-2026-02.json": {
+      "get": {}
+    },
+    "/health": {
+      "get": {}
+    },
+    "/healthz": {
+      "get": {}
+    },
+    "/ready": {
+      "get": {}
+    },
+    "/readyz": {
+      "get": {}
+    },
+    "/slo": {
+      "get": {}
+    },
+    "/v1/agent": {
+      "post": {}
+    },
+    "/v1/agent-signup": {
+      "post": {}
+    },
+    "/v1/agent-signup/challenge": {
+      "post": {}
+    },
+    "/v1/agent-signup/claim": {
+      "post": {}
+    },
+    "/v1/agent-signup/claim/verify": {
+      "post": {}
+    },
+    "/v1/agent-signup/whoami": {
+      "get": {}
+    },
+    "/v1/agent/tools": {
+      "get": {}
+    },
+    "/v1/agent/tools/{action_name}": {
+      "get": {}
+    },
+    "/v1/anomalies/detect": {
+      "get": {}
+    },
+    "/v1/auth/account": {
+      "delete": {}
+    },
+    "/v1/auth/api-keys": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/auth/api-keys/{key_id}": {
+      "delete": {}
+    },
+    "/v1/auth/change-password": {
+      "post": {}
+    },
+    "/v1/auth/forgot-password": {
+      "post": {}
+    },
+    "/v1/auth/google/callback": {
+      "post": {}
+    },
+    "/v1/auth/google/login": {
+      "get": {}
+    },
+    "/v1/auth/login": {
+      "post": {}
+    },
+    "/v1/auth/logout": {
+      "post": {}
+    },
+    "/v1/auth/logout-all": {
+      "post": {}
+    },
+    "/v1/auth/me": {
+      "get": {}
+    },
+    "/v1/auth/register": {
+      "post": {}
+    },
+    "/v1/auth/reset-password": {
+      "post": {}
+    },
+    "/v1/auth/token": {
+      "post": {}
+    },
+    "/v1/auth/token/refresh": {
+      "post": {}
+    },
+    "/v1/auth/verify-reset-otp": {
+      "post": {}
+    },
+    "/v1/billing/checkout": {
+      "post": {}
+    },
+    "/v1/billing/checkout/complete": {
+      "post": {}
+    },
+    "/v1/billing/downgrade": {
+      "post": {}
+    },
+    "/v1/billing/enterprise/sync-usage": {
+      "post": {}
+    },
+    "/v1/billing/invoices": {
+      "get": {}
+    },
+    "/v1/billing/overage": {
+      "get": {},
+      "patch": {}
+    },
+    "/v1/billing/payment-methods": {
+      "get": {}
+    },
+    "/v1/billing/plans": {
+      "get": {}
+    },
+    "/v1/billing/plans/{plan_id}": {
+      "get": {}
+    },
+    "/v1/billing/portal": {
+      "post": {}
+    },
+    "/v1/billing/subscription": {
+      "get": {}
+    },
+    "/v1/billing/subscription/cancel": {
+      "post": {}
+    },
+    "/v1/billing/subscription/change-plan": {
+      "post": {}
+    },
+    "/v1/billing/subscription/resume": {
+      "post": {}
+    },
+    "/v1/billing/topup": {
+      "post": {}
+    },
+    "/v1/billing/topup/history": {
+      "get": {}
+    },
+    "/v1/billing/upgrade": {
+      "post": {}
+    },
+    "/v1/billing/usage": {
+      "get": {}
+    },
+    "/v1/byok/providers": {
+      "get": {}
+    },
+    "/v1/byok/providers/{provider}": {
+      "delete": {},
+      "post": {}
+    },
+    "/v1/byok/providers/{provider}/validate": {
+      "post": {}
+    },
+    "/v1/chat/ask": {
+      "post": {}
+    },
+    "/v1/chat/ask/stream": {
+      "post": {}
+    },
+    "/v1/chat/completions": {
+      "post": {}
+    },
+    "/v1/chat/sessions": {
+      "get": {}
+    },
+    "/v1/chat/sessions/{session_id}": {
+      "delete": {},
+      "get": {}
+    },
+    "/v1/chat/web-search": {
+      "post": {}
+    },
+    "/v1/coding-agent/check-error": {
+      "post": {}
+    },
+    "/v1/coding-agent/coding-history": {
+      "post": {}
+    },
+    "/v1/coding-agent/get-fix-suggestions": {
+      "post": {}
+    },
+    "/v1/coding-agent/health": {
+      "get": {}
+    },
+    "/v1/coding-agent/track-code-change": {
+      "post": {}
+    },
+    "/v1/coding-agent/track-error": {
+      "post": {}
+    },
+    "/v1/coding-agent/track-fix": {
+      "post": {}
+    },
+    "/v1/collections": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/collections/all": {
+      "delete": {}
+    },
+    "/v1/collections/bulk-delete": {
+      "post": {}
+    },
+    "/v1/collections/default": {
+      "get": {}
+    },
+    "/v1/collections/ensure": {
+      "post": {}
+    },
+    "/v1/collections/{collection_id}": {
+      "delete": {},
+      "get": {},
+      "patch": {}
+    },
+    "/v1/collections/{collection_id}/kg/rebuild": {
+      "post": {}
+    },
+    "/v1/collections/{collection_id}/readiness": {
+      "get": {}
+    },
+    "/v1/collections/{collection_id}/rl-reranking": {
+      "post": {}
+    },
+    "/v1/collections/{collection_id}/rl-reranking/train": {
+      "post": {}
+    },
+    "/v1/confidence": {
+      "get": {}
+    },
+    "/v1/consent": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/consent/check/{consent_type}": {
+      "get": {}
+    },
+    "/v1/consent/history": {
+      "get": {}
+    },
+    "/v1/consent/{consent_type}": {
+      "delete": {},
+      "get": {}
+    },
+    "/v1/consolidation/consolidate": {
+      "post": {}
+    },
+    "/v1/consolidation/consolidate/{collection_id}/run-now": {
+      "post": {}
+    },
+    "/v1/consolidation/schedule/{collection_id}": {
+      "post": {}
+    },
+    "/v1/consolidation/stats/{collection_id}": {
+      "get": {}
+    },
+    "/v1/contact/enterprise": {
+      "post": {}
+    },
+    "/v1/conversation": {
+      "get": {}
+    },
+    "/v1/conversation/generic": {
+      "get": {}
+    },
+    "/v1/corrections": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/corrections/relevant": {
+      "get": {}
+    },
+    "/v1/corrections/{correction_id}": {
+      "delete": {},
+      "get": {}
+    },
+    "/v1/decisions": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/decisions/similar": {
+      "get": {}
+    },
+    "/v1/decisions/{decision_id}": {
+      "delete": {},
+      "get": {}
+    },
+    "/v1/documents": {
+      "get": {}
+    },
+    "/v1/documents/stats/summary": {
+      "get": {}
+    },
+    "/v1/documents/supported/formats": {
+      "get": {}
+    },
+    "/v1/documents/upload": {
+      "post": {}
+    },
+    "/v1/documents/upload/batch": {
+      "post": {}
+    },
+    "/v1/documents/{document_id}": {
+      "delete": {},
+      "get": {},
+      "patch": {}
+    },
+    "/v1/documents/{document_id}/chunks": {
+      "get": {}
+    },
+    "/v1/documents/{document_id}/create-memories": {
+      "post": {}
+    },
+    "/v1/documents/{document_id}/memories": {
+      "delete": {}
+    },
+    "/v1/fast/batch-ingest": {
+      "post": {}
+    },
+    "/v1/fast/memory": {
+      "post": {}
+    },
+    "/v1/feedback": {
+      "post": {}
+    },
+    "/v1/feedback/missing": {
+      "post": {}
+    },
+    "/v1/feedback/ranking": {
+      "post": {}
+    },
+    "/v1/feedback/relevance": {
+      "post": {}
+    },
+    "/v1/feedback/stats": {
+      "get": {}
+    },
+    "/v1/feedback/{feedback_id}": {
+      "delete": {}
+    },
+    "/v1/gdpr/delete-account": {
+      "post": {}
+    },
+    "/v1/gdpr/export": {
+      "post": {}
+    },
+    "/v1/gdpr/restore-account": {
+      "post": {}
+    },
+    "/v1/health": {
+      "get": {}
+    },
+    "/v1/health/build": {
+      "get": {}
+    },
+    "/v1/integrations": {
+      "get": {}
+    },
+    "/v1/integrations/{provider}": {
+      "delete": {}
+    },
+    "/v1/integrations/{provider}/callback": {
+      "post": {}
+    },
+    "/v1/integrations/{provider}/connect": {
+      "get": {}
+    },
+    "/v1/integrations/{provider}/status": {
+      "get": {}
+    },
+    "/v1/integrations/{provider}/sync": {
+      "post": {}
+    },
+    "/v1/jobs": {
+      "get": {}
+    },
+    "/v1/jobs/{job_id}": {
+      "delete": {},
+      "get": {}
+    },
+    "/v1/jobs/{job_id}/cancel": {
+      "post": {}
+    },
+    "/v1/knowledge-graph/context/{memory_id}": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/contradictions": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/entities": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/knowledge-graph/entities/{entity_name}": {
+      "delete": {},
+      "get": {}
+    },
+    "/v1/knowledge-graph/health": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/inference/paths": {
+      "post": {}
+    },
+    "/v1/knowledge-graph/inference/run": {
+      "post": {}
+    },
+    "/v1/knowledge-graph/query": {
+      "post": {}
+    },
+    "/v1/knowledge-graph/relationships": {
+      "delete": {},
+      "post": {}
+    },
+    "/v1/knowledge-graph/relationships/{memory_id}": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/stats": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/status/{memory_id}": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/test-neo4j": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/timeline/{entity_name}": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/version": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/visualization/overview": {
+      "get": {}
+    },
+    "/v1/knowledge-graph/visualization/subgraph": {
+      "post": {}
+    },
+    "/v1/learning/decisions": {
+      "post": {}
+    },
+    "/v1/learning/decisions/{decision_id}": {
+      "get": {}
+    },
+    "/v1/learning/decisions/{decision_id}/assessment": {
+      "get": {}
+    },
+    "/v1/learning/decisions/{decision_id}/executions": {
+      "post": {}
+    },
+    "/v1/learning/decisions/{decision_id}/outcomes": {
+      "post": {}
+    },
+    "/v1/learning/decisions/{decision_id}/proof": {
+      "get": {}
+    },
+    "/v1/learning/episodes": {
+      "post": {}
+    },
+    "/v1/learning/episodes/{episode_id}": {
+      "get": {}
+    },
+    "/v1/learning/episodes/{episode_id}/close": {
+      "post": {}
+    },
+    "/v1/learning/experiences/assess": {
+      "post": {}
+    },
+    "/v1/learning/experiences/comparison/candidates/{lesson_id}/revisions": {
+      "post": {}
+    },
+    "/v1/learning/experiences/context": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assessment": {
+      "get": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assign": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assignments/{decision_id}/context": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/assignments/{decision_id}/dispatch": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/reuse": {
+      "post": {}
+    },
+    "/v1/learning/experiences/exposure/studies/{study_id}/stop": {
+      "post": {}
+    },
+    "/v1/learning/experiences/jobs/{job_id}": {
+      "get": {}
+    },
+    "/v1/learning/experiences/jobs/{job_id}/complete": {
+      "post": {}
+    },
+    "/v1/learning/experiences/jobs/{job_id}/dispatch": {
+      "post": {}
+    },
+    "/v1/learning/experiences/jobs/{job_id}/reject-output": {
+      "post": {}
+    },
+    "/v1/learning/experiences/jobs/{job_id}/uncertain": {
+      "post": {}
+    },
+    "/v1/learning/experiences/lessons/{lesson_id}": {
+      "get": {}
+    },
+    "/v1/learning/experiences/lessons/{lesson_id}/reviews": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/learning/experiences/lessons/{lesson_id}/revisions": {
+      "post": {}
+    },
+    "/v1/learning/experiences/permits/{permit_id}": {
+      "get": {}
+    },
+    "/v1/learning/experiences/permits/{permit_id}/dispatch": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}": {
+      "get": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/claim": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/claim": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/drafts": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/drafts/{draft_id}": {
+      "get": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/jobs/{job_id}/candidates": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/prepare": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/comparison/revalidate": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/contrast/claim": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/contrast/prepare": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/contrast/revalidate": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/funded-claim": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/funding": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/lessons": {
+      "get": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/permission-activation": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/permission-policies": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/permission-state": {
+      "get": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/permits": {
+      "post": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/review-queue": {
+      "get": {}
+    },
+    "/v1/learning/experiences/programs/{program_id}/stop": {
+      "post": {}
+    },
+    "/v1/learning/metrics": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/learning/policies/{policy_key}/advice": {
+      "get": {}
+    },
+    "/v1/learning/policies/{policy_key}/configuration": {
+      "get": {},
+      "put": {}
+    },
+    "/v1/learning/policies/{policy_key}/context-schema": {
+      "get": {},
+      "put": {}
+    },
+    "/v1/learning/policies/{policy_key}/evaluate": {
+      "post": {}
+    },
+    "/v1/learning/policies/{policy_key}/insights": {
+      "get": {}
+    },
+    "/v1/learning/policies/{policy_key}/report": {
+      "get": {}
+    },
+    "/v1/learning/policies/{policy_key}/setup": {
+      "post": {}
+    },
+    "/v1/learning/proof-key": {
+      "get": {}
+    },
+    "/v1/learning/verifiers": {
+      "post": {}
+    },
+    "/v1/learning/verifiers/{verifier_id}/decisions/{decision_id}": {
+      "get": {}
+    },
+    "/v1/learning/verifiers/{verifier_id}/events": {
+      "post": {}
+    },
+    "/v1/learning/verifiers/{verifier_id}/events/{event_id}/artifact": {
+      "post": {}
+    },
+    "/v1/learning/verifiers/{verifier_id}/revoke": {
+      "post": {}
+    },
+    "/v1/media": {
+      "get": {}
+    },
+    "/v1/media/search/transcript": {
+      "get": {}
+    },
+    "/v1/media/stats/summary": {
+      "get": {}
+    },
+    "/v1/media/supported/formats": {
+      "get": {}
+    },
+    "/v1/media/upload": {
+      "post": {}
+    },
+    "/v1/media/{media_id}": {
+      "delete": {},
+      "get": {},
+      "patch": {}
+    },
+    "/v1/media/{media_id}/create-memories": {
+      "post": {}
+    },
+    "/v1/media/{media_id}/segments": {
+      "get": {}
+    },
+    "/v1/media/{media_id}/transcript": {
+      "get": {}
+    },
+    "/v1/memories": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/memories/all": {
+      "delete": {}
+    },
+    "/v1/memories/batch": {
+      "post": {}
+    },
+    "/v1/memories/bulk-delete": {
+      "post": {}
+    },
+    "/v1/memories/jobs/status": {
+      "post": {}
+    },
+    "/v1/memories/process": {
+      "post": {}
+    },
+    "/v1/memories/raw": {
+      "post": {}
+    },
+    "/v1/memories/search": {
+      "get": {}
+    },
+    "/v1/memories/{memory_id}": {
+      "delete": {},
+      "get": {},
+      "patch": {}
+    },
+    "/v1/memories/{memory_id}/history": {
+      "get": {}
+    },
+    "/v1/memory-jobs/{job_id}": {
+      "get": {}
+    },
+    "/v1/memory-tools/consolidate": {
+      "post": {}
+    },
+    "/v1/memory-tools/delete": {
+      "delete": {}
+    },
+    "/v1/memory-tools/insert": {
+      "post": {}
+    },
+    "/v1/memory-tools/replace": {
+      "post": {}
+    },
+    "/v1/memory-tools/rethink": {
+      "post": {}
+    },
+    "/v1/memory-tools/search": {
+      "post": {}
+    },
+    "/v1/mfa/backup-codes/regenerate": {
+      "post": {}
+    },
+    "/v1/mfa/disable": {
+      "post": {}
+    },
+    "/v1/mfa/disable/request-otp": {
+      "post": {}
+    },
+    "/v1/mfa/setup": {
+      "post": {}
+    },
+    "/v1/mfa/setup/request-otp": {
+      "post": {}
+    },
+    "/v1/mfa/status": {
+      "get": {}
+    },
+    "/v1/mfa/verify": {
+      "post": {}
+    },
+    "/v1/mfa/verify-setup": {
+      "post": {}
+    },
+    "/v1/mfa/verify/request-otp": {
+      "post": {}
+    },
+    "/v1/models": {
+      "get": {}
+    },
+    "/v1/policies": {
+      "get": {}
+    },
+    "/v1/policies/compare": {
+      "post": {}
+    },
+    "/v1/policies/promote": {
+      "post": {}
+    },
+    "/v1/policies/rollback": {
+      "post": {}
+    },
+    "/v1/policies/status": {
+      "get": {}
+    },
+    "/v1/policies/train": {
+      "post": {}
+    },
+    "/v1/policies/{agent_type}/production": {
+      "get": {}
+    },
+    "/v1/policies/{agent_type}/status": {
+      "get": {}
+    },
+    "/v1/procedures": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/procedures/feedback": {
+      "post": {}
+    },
+    "/v1/procedures/learn": {
+      "post": {}
+    },
+    "/v1/procedures/match": {
+      "post": {}
+    },
+    "/v1/procedures/{procedure_id}": {
+      "delete": {},
+      "get": {},
+      "patch": {}
+    },
+    "/v1/procedures/{procedure_id}/execute": {
+      "post": {}
+    },
+    "/v1/profile": {
+      "delete": {},
+      "get": {},
+      "patch": {},
+      "post": {}
+    },
+    "/v1/profile/chat": {
+      "post": {}
+    },
+    "/v1/profile/cleanup": {
+      "post": {}
+    },
+    "/v1/profile/dialectic": {
+      "post": {}
+    },
+    "/v1/profile/facts": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/profile/facts/by-id/{fact_id}": {
+      "delete": {}
+    },
+    "/v1/profile/facts/{fact_key}": {
+      "delete": {},
+      "patch": {}
+    },
+    "/v1/profile/history": {
+      "get": {}
+    },
+    "/v1/profile/snapshot": {
+      "post": {}
+    },
+    "/v1/profile/starters": {
+      "get": {}
+    },
+    "/v1/profile/stats": {
+      "get": {}
+    },
+    "/v1/profile/working-representation": {
+      "post": {}
+    },
+    "/v1/quality/auto-cleanup": {
+      "post": {}
+    },
+    "/v1/quality/bulk": {
+      "post": {}
+    },
+    "/v1/quality/distribution": {
+      "get": {}
+    },
+    "/v1/quality/recommendations": {
+      "get": {}
+    },
+    "/v1/quality/{memory_id}": {
+      "get": {}
+    },
+    "/v1/release": {
+      "get": {}
+    },
+    "/v1/rl/canary/rollback": {
+      "post": {}
+    },
+    "/v1/rl/canary/start": {
+      "post": {}
+    },
+    "/v1/rl/canary/status": {
+      "get": {}
+    },
+    "/v1/rl/checkpoint/load": {
+      "post": {}
+    },
+    "/v1/rl/checkpoint/save": {
+      "post": {}
+    },
+    "/v1/rl/evaluate": {
+      "post": {}
+    },
+    "/v1/rl/metrics": {
+      "get": {}
+    },
+    "/v1/rl/train/answer-agent": {
+      "post": {}
+    },
+    "/v1/rl/train/both": {
+      "post": {}
+    },
+    "/v1/rl/train/memory-manager": {
+      "post": {}
+    },
+    "/v1/search": {
+      "post": {}
+    },
+    "/v1/search/advanced": {
+      "post": {}
+    },
+    "/v1/search/graph": {
+      "post": {}
+    },
+    "/v1/search/reason": {
+      "post": {}
+    },
+    "/v1/search/similar/{memory_id}": {
+      "get": {}
+    },
+    "/v1/slo": {
+      "get": {}
+    },
+    "/v1/stats/stats": {
+      "get": {}
+    },
+    "/v1/support/admin/tickets": {
+      "get": {}
+    },
+    "/v1/support/admin/tickets/{ticket_id}": {
+      "patch": {}
+    },
+    "/v1/support/tickets": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/support/tickets/{ticket_id}": {
+      "get": {}
+    },
+    "/v1/support/webhooks/tawkto": {
+      "post": {}
+    },
+    "/v1/temporal/facts": {
+      "post": {}
+    },
+    "/v1/temporal/facts/conflicts": {
+      "get": {}
+    },
+    "/v1/temporal/facts/history": {
+      "get": {}
+    },
+    "/v1/temporal/facts/invalidate": {
+      "post": {}
+    },
+    "/v1/temporal/facts/query-at-time": {
+      "post": {}
+    },
+    "/v1/temporal/facts/{fact_id}": {
+      "delete": {}
+    },
+    "/v1/tiers/config": {
+      "get": {},
+      "put": {}
+    },
+    "/v1/tiers/consolidate": {
+      "post": {}
+    },
+    "/v1/tiers/memories": {
+      "get": {}
+    },
+    "/v1/tiers/memories/{memory_id}/tier": {
+      "delete": {}
+    },
+    "/v1/tiers/promote": {
+      "post": {}
+    },
+    "/v1/tiers/stats": {
+      "get": {}
+    },
+    "/v1/tiers/transitions": {
+      "get": {}
+    },
+    "/v1/token-packs": {
+      "get": {}
+    },
+    "/v1/token-packs/history": {
+      "get": {}
+    },
+    "/v1/token-packs/purchase/{pack_id}": {
+      "post": {}
+    },
+    "/v1/token-packs/quota": {
+      "get": {}
+    },
+    "/v1/token-packs/webhook": {
+      "post": {}
+    },
+    "/v1/url-import": {
+      "get": {}
+    },
+    "/v1/url-import/import": {
+      "post": {}
+    },
+    "/v1/url-import/import/batch": {
+      "post": {}
+    },
+    "/v1/url-import/stats/summary": {
+      "get": {}
+    },
+    "/v1/url-import/supported/sources": {
+      "get": {}
+    },
+    "/v1/url-import/{import_id}": {
+      "delete": {},
+      "get": {}
+    },
+    "/v1/url-import/{url_id}/create-memories": {
+      "post": {}
+    },
+    "/v1/usage": {
+      "get": {}
+    },
+    "/v1/usage/api-key/{api_key_id}": {
+      "get": {}
+    },
+    "/v1/usage/billing": {
+      "get": {}
+    },
+    "/v1/usage/credit-usage": {
+      "get": {}
+    },
+    "/v1/usage/credits": {
+      "get": {}
+    },
+    "/v1/usage/export": {
+      "get": {}
+    },
+    "/v1/usage/history": {
+      "get": {}
+    },
+    "/v1/usage/managed-balance": {
+      "get": {}
+    },
+    "/v1/usage/memory-quota": {
+      "get": {}
+    },
+    "/v1/usage/overview": {
+      "get": {}
+    },
+    "/v1/usage/quota": {
+      "get": {}
+    },
+    "/v1/usage/recent": {
+      "get": {}
+    },
+    "/v1/usage/spending": {
+      "get": {}
+    },
+    "/v1/users/me": {
+      "delete": {},
+      "get": {},
+      "patch": {}
+    },
+    "/v1/users/me/capabilities": {
+      "get": {}
+    },
+    "/v1/users/me/model-preference": {
+      "get": {},
+      "put": {}
+    },
+    "/v1/waitlist/join": {
+      "post": {}
+    },
+    "/v1/waitlist/stats": {
+      "get": {}
+    },
+    "/v1/webhooks": {
+      "get": {},
+      "post": {}
+    },
+    "/v1/webhooks/failures": {
+      "get": {}
+    },
+    "/v1/webhooks/failures/{failure_id}/abandon": {
+      "post": {}
+    },
+    "/v1/webhooks/failures/{failure_id}/replay": {
+      "post": {}
+    },
+    "/v1/webhooks/stripe": {
+      "post": {}
+    },
+    "/v1/webhooks/{webhook_id}": {
+      "delete": {},
+      "get": {},
+      "patch": {},
+      "put": {}
+    },
+    "/v1/webhooks/{webhook_id}/rotate-secret": {
+      "post": {}
+    },
+    "/v1/webhooks/{webhook_id}/test": {
+      "post": {}
+    },
+    "/v1/working-memory/add": {
+      "post": {}
+    },
+    "/v1/working-memory/clear/{session_id}": {
+      "delete": {}
+    },
+    "/v1/working-memory/compress/{session_id}": {
+      "post": {}
+    },
+    "/v1/working-memory/consolidate": {
+      "post": {}
+    },
+    "/v1/working-memory/context/{session_id}": {
+      "get": {}
+    },
+    "/v1/working-memory/recent/{session_id}": {
+      "get": {}
+    },
+    "/v1/working-memory/session/{session_id}": {
+      "delete": {}
+    },
+    "/v1/working-memory/stats": {
+      "get": {}
+    },
+    "/v1/working-memory/trim/{session_id}": {
+      "post": {}
+    }
+  },
+  "schema_head": "e5f6g7h8i868"
+}
