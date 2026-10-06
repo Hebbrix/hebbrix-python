@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from hebbrix.exceptions import IndexingTimeoutError
 from hebbrix.models import SearchSafetyEnvelope
-from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope, _validate_advisor_horizon
+from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope, _validate_advisor_horizon, _validate_advice_view
 
 if TYPE_CHECKING:
     from hebbrix.client import MemoryClient
@@ -1010,6 +1010,7 @@ class SearchResource(BaseResource):
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
+        view: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Search memories.
@@ -1038,6 +1039,7 @@ class SearchResource(BaseResource):
             include_low_confidence=include_low_confidence,
             group_by_source=group_by_source,
             debug=debug,
+            view=view,
         )
         return response["results"]
 
@@ -1056,6 +1058,7 @@ class SearchResource(BaseResource):
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
+        view: Optional[str] = None,
     ) -> SearchSafetyEnvelope:
         """Search and preserve the automatic ProofLoop context.
 
@@ -1063,6 +1066,7 @@ class SearchResource(BaseResource):
         this method when the selected evidence will feed a learned decision.
         """
 
+        _validate_advice_view(view)
         payload: Dict[str, Any] = {
             "query": query,
             "collection_id": collection_id,
@@ -1075,6 +1079,7 @@ class SearchResource(BaseResource):
             "include_low_confidence": include_low_confidence,
             "group_by_source": group_by_source,
             "debug": debug,
+            "view": view,
         }
         if fast is not None:
             payload["fast"] = fast
@@ -1181,6 +1186,24 @@ class ProofLoopResource(BaseResource):
         if token:
             body["proof_context_token"] = token
         return await self.client.post("/v1/learning/decisions", json=body)
+
+    async def decide_batch(self, items: List[Dict[str, Any]], *,
+                           view: str = "compact") -> Dict[str, Any]:
+        """Submit 1-50 idempotent decision requests; inspect every item status.
+
+        The server commits each item independently. A rejection does not roll
+        back accepted items. No tool is executed or permission granted.
+        """
+        from ._advice import _batch_payload
+        return await self.client.post("/v1/learning/decisions/batch",
+            json=_batch_payload(items, view))
+
+    async def record_outcomes_batch(self, items: List[Dict[str, Any]], *,
+                                    view: str = "compact") -> Dict[str, Any]:
+        """Batch actual outcomes with per-item keys; not an atomic transaction."""
+        from ._advice import _batch_payload
+        return await self.client.post("/v1/learning/outcomes/batch",
+            json=_batch_payload(items, view, outcomes=True))
 
     async def register_verifier(
         self,
@@ -1408,7 +1431,8 @@ class ProofLoopResource(BaseResource):
                                  user_id: Optional[str] = None,
                                  idempotency_key: Optional[str] = None,
                                  remaining_decisions: Optional[int] = None,
-                                 max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
+                                 max_pilot_decisions: Optional[int] = None,
+                                 view: Optional[str] = None) -> Dict[str, Any]:
         """Read evidence, call your advisor once, then log its explicit choice.
         advisor must return chosen_action_key, action_probability and the complete
         behavior_probabilities. No model confidence is invented as a propensity.
@@ -1420,12 +1444,14 @@ class ProofLoopResource(BaseResource):
         """
         _validate_advisor_scope(policy_key, collection_id, user_id, idempotency_key)
         _validate_advisor_horizon(remaining_decisions, max_pilot_decisions)
+        _validate_advice_view(view)
         candidates, context, keys = _snapshot_advisor_inputs(candidates, context)
         if not callable(advisor):
             raise ValueError("advisor must be callable")
         card = await self.policy_advice(policy_key, context=context,
             collection_id=collection_id, user_id=user_id,
-            remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions)
+            remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions,
+            **({"view": view} if view is not None else {}))
         selection = _validated_advisor_selection(await advisor(card), keys)
         return await self.decide(policy_key=policy_key, candidates=candidates, context=context,
             collection_id=collection_id, user_id=user_id, idempotency_key=idempotency_key,
@@ -1448,12 +1474,15 @@ class ProofLoopResource(BaseResource):
     async def policy_advice(self, policy_key: str, *, context: Optional[Dict[str, Any]] = None,
                             collection_id: Optional[str] = None, user_id: Optional[str] = None,
                             remaining_decisions: Optional[int] = None,
-                            max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
+                            max_pilot_decisions: Optional[int] = None,
+                            view: Optional[str] = None) -> Dict[str, Any]:
         """Read caller-reported evidence and a candidate, never an execution permit."""
+        _validate_advice_view(view)
         return await self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/advice",
             params={k: v for k, v in dict(context=json.dumps(context or {}),
                 collection_id=collection_id, user_id=user_id,
-                remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions).items() if v is not None})
+                remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions,
+                view=view).items() if v is not None})
 
     async def action_advice(self, query: str, *, policy_key: str, action_key: str,
                            context: Optional[Dict[str, Any]] = None, collection_id: Optional[str] = None,
@@ -1562,6 +1591,28 @@ class ProofLoopResource(BaseResource):
                 "idempotency_key": idempotency_key,
             },
         )
+
+    async def confirm_capture(self, decision_id: str, *, observation_id: str,
+                              idempotency_key: str, success: bool, confirmed: bool,
+                              collection_id: Optional[str] = None,
+                              user_id: Optional[str] = None,
+                              source_system: Optional[str] = None,
+                              source_event_id: Optional[str] = None,
+                              evidence_digest: Optional[str] = None) -> Dict[str, Any]:
+        """Explicitly confirm one provisional capture in its exact original scope.
+
+        Requires an affirmative caller assertion and actual Boolean outcome.
+        This is caller-confirmed evidence, not independent verification. Protected
+        episodes and existing final outcomes cannot be promoted by this method.
+        No source text is interpreted and no confirmation is performed automatically.
+        """
+        from ._advice import _confirmation_payload
+        body = _confirmation_payload(observation_id, idempotency_key, success,
+            confirmed, collection_id, user_id, source_system, source_event_id,
+            evidence_digest)
+        return await self.client.post(
+            f"/v1/learning/decisions/{quote(decision_id, safe='')}/confirm-capture",
+            json=body)
 
     async def proof(self, decision_id: str) -> Dict[str, Any]:
         return await self.client.get(f"/v1/learning/decisions/{decision_id}/proof")

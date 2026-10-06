@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.2 — 2026-10-06 (compact advice, batches and confirmation)
+
+- Correct canonical documentation metadata and simplify the stable three-call guide.
+- Add optional compact search/advice, bounded independently committed decision/outcome batches, and explicit caller-confirmation transports.
+- Add bounded chat-learning wait options while preserving the original job receipt.
+- Keep historical confidence scope aliases, ACT-as-advice and protected outcome boundaries intact.
+- Requires matching Round9 server routes; no benchmark superiority, latency SLA or automatic execution is implied.
+
 ## 2.6.1 — 2026-10-04 (advisory horizon helpers)
 
 - Carry optional remaining_decisions and max_pilot_decisions through evidence reads and the once-only advisor callback.

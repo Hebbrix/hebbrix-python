@@ -576,7 +576,10 @@ class SyncSearchResource:
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
+        view: Optional[str] = None,
     ) -> Dict[str, Any]:
+        from ._advice import _validate_advice_view
+        _validate_advice_view(view)
         payload: Dict[str, Any] = {
             "query": query,
             "collection_id": collection_id,
@@ -589,6 +592,7 @@ class SyncSearchResource:
             "include_low_confidence": include_low_confidence,
             "group_by_source": group_by_source,
             "debug": debug,
+            "view": view,
         }
         if fast is not None:
             payload["fast"] = fast
@@ -661,6 +665,20 @@ class SyncProofLoopResource:
         if token:
             body["proof_context_token"] = token
         return self.client.post("/v1/learning/decisions", json=body)
+
+    def decide_batch(self, items: List[Dict[str, Any]], *,
+                     view: str = "compact") -> Dict[str, Any]:
+        """1-50 idempotent requests; partial acceptance, never execution authority."""
+        from ._advice import _batch_payload
+        return self.client.post("/v1/learning/decisions/batch",
+            json=_batch_payload(items, view))
+
+    def record_outcomes_batch(self, items: List[Dict[str, Any]], *,
+                              view: str = "compact") -> Dict[str, Any]:
+        """Independently committed outcomes; inspect each accepted/rejected result."""
+        from ._advice import _batch_payload
+        return self.client.post("/v1/learning/outcomes/batch",
+            json=_batch_payload(items, view, outcomes=True))
 
     def register_verifier(
         self,
@@ -886,7 +904,8 @@ class SyncProofLoopResource:
                                  user_id: Optional[str] = None,
                                  idempotency_key: Optional[str] = None,
                                  remaining_decisions: Optional[int] = None,
-                                 max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
+                                 max_pilot_decisions: Optional[int] = None,
+                                 view: Optional[str] = None) -> Dict[str, Any]:
         """Read evidence, call your advisor once, then log its explicit choice.
         advisor must return chosen_action_key, action_probability and the complete
         behavior_probabilities. No model confidence is invented as a propensity.
@@ -898,12 +917,15 @@ class SyncProofLoopResource:
         """
         _validate_advisor_scope(policy_key, collection_id, user_id, idempotency_key)
         _validate_advisor_horizon(remaining_decisions, max_pilot_decisions)
+        from ._advice import _validate_advice_view
+        _validate_advice_view(view)
         candidates, context, keys = _snapshot_advisor_inputs(candidates, context)
         if not callable(advisor):
             raise ValueError("advisor must be callable")
         card = self.policy_advice(policy_key, context=context,
             collection_id=collection_id, user_id=user_id,
-            remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions)
+            remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions,
+            **({"view": view} if view is not None else {}))
         selection = _validated_advisor_selection(advisor(card), keys)
         return self.decide(policy_key=policy_key, candidates=candidates, context=context,
             collection_id=collection_id, user_id=user_id, idempotency_key=idempotency_key,
@@ -926,15 +948,19 @@ class SyncProofLoopResource:
     def policy_advice(self, policy_key: str, *, context: Optional[Dict[str, Any]] = None,
                       collection_id: Optional[str] = None, user_id: Optional[str] = None,
                       remaining_decisions: Optional[int] = None,
-                      max_pilot_decisions: Optional[int] = None) -> Dict[str, Any]:
+                      max_pilot_decisions: Optional[int] = None,
+                      view: Optional[str] = None) -> Dict[str, Any]:
         """Read caller-reported evidence and a candidate, never an execution permit."""
+        from ._advice import _validate_advice_view
+        _validate_advice_view(view)
         return self.client.get(f"/v1/learning/policies/{quote(policy_key, safe='')}/advice",
             params={k: v for k, v in dict(context=json.dumps(context or {}),
                 collection_id=collection_id, user_id=user_id,
-                remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions).items() if v is not None})
+                remaining_decisions=remaining_decisions, max_pilot_decisions=max_pilot_decisions,
+                view=view).items() if v is not None})
 
     def action_advice(self, query: str, *, policy_key: str, action_key: str,
-                           context: Optional[Dict[str, Any]] = None, collection_id: Optional[str] = None,
+                     context: Optional[Dict[str, Any]] = None, collection_id: Optional[str] = None,
                            user_id: Optional[str] = None) -> Dict[str, Any]:
         """Read ASK/REVIEW/ACT advice for an exact configured action. ACT is not permission."""
         return self.client.get("/v1/confidence", params={k: v for k, v in
@@ -1048,6 +1074,22 @@ class SyncProofLoopResource:
     def proof(self, decision_id: str) -> Dict[str, Any]:
         return self.client.get(f"/v1/learning/decisions/{decision_id}/proof")
 
+    def confirm_capture(self, decision_id: str, *, observation_id: str,
+                        idempotency_key: str, success: bool, confirmed: bool,
+                        collection_id: Optional[str] = None,
+                        user_id: Optional[str] = None,
+                        source_system: Optional[str] = None,
+                        source_event_id: Optional[str] = None,
+                        evidence_digest: Optional[str] = None) -> Dict[str, Any]:
+        """Caller confirmation, never automatic promotion or independent verification."""
+        from ._advice import _confirmation_payload
+        body = _confirmation_payload(observation_id, idempotency_key, success,
+            confirmed, collection_id, user_id, source_system, source_event_id,
+            evidence_digest)
+        return self.client.post(
+            f"/v1/learning/decisions/{quote(decision_id, safe='')}/confirm-capture",
+            json=body)
+
     def public_key(self, key_id: Optional[str] = None) -> Dict[str, Any]:
         params = {"key_id": key_id} if key_id else None
         return self.client.get("/v1/learning/proof-key", params=params)
@@ -1068,7 +1110,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.1",
+            "User-Agent": "hebbrix-python/2.6.2",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

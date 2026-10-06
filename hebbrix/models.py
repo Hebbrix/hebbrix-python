@@ -1,6 +1,21 @@
 """Public response contracts for evidence-bearing Hebbrix operations."""
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, TypedDict, Literal, Optional
+
+
+class ActionAdviceReceipt(TypedDict, total=False):
+    """Canonical advice envelope. ACT is never execution authorization."""
+
+    gate: Literal["ASK", "REVIEW", "ACT", "BLOCK"]
+    recommendation: str
+    recommended_action: str
+    action_confidence: Optional[float]
+    blocked_by: Optional[str]
+    blocked_hint: Optional[str]
+    autonomy_evidence: Dict[str, Any]
+    action_evidence: List[Dict[str, Any]]
+    authorization_granted: bool
+    execution_permission_required: bool
 
 
 class GroundingReceipt(TypedDict, total=False):

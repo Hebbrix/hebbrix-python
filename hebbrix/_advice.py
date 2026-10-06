@@ -5,6 +5,54 @@ import math
 import re
 
 
+def _validate_advice_view(view):
+    if view is not None and view not in ("full", "compact"):
+        raise ValueError("view must be full or compact")
+
+
+def _confirmation_payload(observation_id, idempotency_key, success, confirmed,
+                          collection_id=None, user_id=None, source_system=None,
+                          source_event_id=None, evidence_digest=None):
+    if type(success) is not bool or confirmed is not True:
+        raise ValueError("explicit Boolean success and confirmed=True are required")
+    for field, value in (("observation_id", observation_id),
+                         ("idempotency_key", idempotency_key)):
+        if type(value) is not str or not value.strip() or len(value) > 160:
+            raise ValueError("{} must be a nonempty bounded string".format(field))
+    return {key: value for key, value in dict(
+        observation_id=observation_id, idempotency_key=idempotency_key,
+        success=success, confirmed=True, collection_id=collection_id, user_id=user_id,
+        source_system=source_system, source_event_id=source_event_id,
+        evidence_digest=evidence_digest,
+    ).items() if value is not None}
+
+
+def _batch_payload(items, view="compact", outcomes=False):
+    _validate_advice_view(view)
+    if type(items) is not list or not 1 <= len(items) <= 50:
+        raise ValueError("batch items must contain 1-50 requests")
+    copied = _json_snapshot(items, "batch items", 4_000_000)
+    for item in copied:
+        if type(item) is not dict:
+            raise ValueError("each batch item must be an object")
+        key = item.get("idempotency_key")
+        if type(key) is not str or not key.strip() or len(key) > 160:
+            raise ValueError("each batch item needs a nonempty idempotency_key")
+        if outcomes and (type(item.get("decision_id")) is not str or
+                         not item["decision_id"].strip() or
+                         type(item.get("outcome")) is not dict):
+            raise ValueError("outcome items need decision_id and an outcome object")
+        if not outcomes and "proof_context" in item:
+            context = item.pop("proof_context")
+            token = context.get("token") if type(context) is dict else context
+            if type(token) is not str or not token.strip():
+                raise ValueError("proof_context must contain the original proof token")
+            if "proof_context_token" in item and item["proof_context_token"] != token:
+                raise ValueError("conflicting proof context tokens")
+            item["proof_context_token"] = token
+    return {"items": copied, **({"view": view} if view is not None else {})}
+
+
 def _validate_advisor_horizon(remaining_decisions, max_pilot_decisions):
     for field, value, maximum in (("remaining_decisions", remaining_decisions, 10000),
                                   ("max_pilot_decisions", max_pilot_decisions, 8)):

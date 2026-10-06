@@ -93,7 +93,7 @@ class MemoryClient:
         """Get request headers."""
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.1",
+            "User-Agent": "hebbrix-python/2.6.2",
         }
 
         if self.api_key:
@@ -254,6 +254,7 @@ class MemoryClient:
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
+        view: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Search memories.
@@ -282,6 +283,7 @@ class MemoryClient:
             include_low_confidence=include_low_confidence,
             group_by_source=group_by_source,
             debug=debug,
+            view=view,
         )
 
     async def search_with_proof(
@@ -299,6 +301,7 @@ class MemoryClient:
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
+        view: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Search and return both results and the automatic ProofLoop context."""
 
@@ -316,6 +319,7 @@ class MemoryClient:
             include_low_confidence=include_low_confidence,
             group_by_source=group_by_source,
             debug=debug,
+            view=view,
         )
 
     async def reason(

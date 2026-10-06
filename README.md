@@ -2,53 +2,22 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-This branch is the **2.6.0 stable SDK**. The new policy configuration and
-advice helpers require backend schema `e5f6g7h8i868` or a compatible successor.
-A stable SDK does not qualify experimental learning or enable autonomous execution. ASK/REVIEW/ACT is advice;
-an action still requires independent permission.
+The current stable package is **2.6.2**. Start with memory storage and search, or
+the three-call outcome-learning workflow below. Advanced evidence and execution
+permission transports are opt-in; installing the SDK never permits an action.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.6.0
+pip install hebbrix==2.6.2
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
 supports the core collection, memory, search, correction, procedure, and
-ProofLoop workflows; advanced temporal, working-memory, consolidation,
+outcome-learning workflows; advanced temporal, working-memory, consolidation,
 memory-tool, and RL resources are currently async-only.
 
-The runtime requires `httpx>=0.25.0,<1`; incompatible 1.x prereleases are excluded.
-For the matching Round 5 backend, `setup_policy` accepts explicit `configuration`
-options for versioned change response and declared optional-field sharing, plus
-`value_objective={"success_value":10,"max_cost":20,"cost_unit":"USD"}`.
-Report both actual success and cost with `record_outcome`. Chat follow-up capture
-requires `features.learning: true` and an exact `outcome_followup.decision_id`;
-captured signals are provisional, not verified execution or autonomy evidence.
-These options require the matching runtime, not only the unchanged database schema.
-
 ## Quick start
-
-October 2 follow-up: `proofloop.setup_policy` atomically creates a new
-context/schema policy with explicitly declared low-risk exploration; existing
-policies are not migrated automatically. `learning_report` reads a bounded,
-scoped descriptive report, not proven uplift. `decide_with_advice` reads an
-evidence card, invokes the supplied advisor once and logs its actual choice and
-probabilities. `decide` accepts bounded `prior_action` / `prior_strength` for one
-server-selected decision; this is not outcome evidence. These new helpers and
-structured paraphrase matching require the matching October 2 outcome-followup
-backend, not merely its database schema; inspect `/v1/release` before use.
-Nothing here grants permission to execute. Learning performance and reliable
-model compliance with feedback are not established.
-
-Both clients expose `proofloop.register_context_schema`, `context_schema`,
-`configure_policy`, `policy_configuration`, `policy_advice` and `action_advice`.
-Enroll context before recording decisions. Configuration uses `expected_revision`
-for compare-and-swap; do not retry a conflict blindly. Exploration remains an
-explicit low-risk opt-in. `action_advice` takes the exact configured description,
-policy/action IDs and context, and maps `user_id` to the confidence endpoint's
-`end_user_id`. For the complete request shapes, see the
-[learning guide](https://www.hebbrix.com/docs/learning).
 
 ```python
 import asyncio
@@ -71,6 +40,57 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Learn from outcomes in three calls
+
+Use server-side selection when Hebbrix should choose. Read-only advice is for a
+caller that intentionally chooses outside Hebbrix; an LLM can ignore that advice.
+Configure a new policy once, request a decision, then report its actual result:
+
+```python
+await client.proofloop.setup_policy(
+    "support.reply.v1", user_id="customer-42",
+    context_schema={"version": "v1", "fields": {
+        "issue": {"values": ["delivery", "billing"], "required": True}
+    }},
+    actions={
+        "explain": {"description": "Explain the delivery status", "target": "ticket",
+                    "risk_tier": "low", "exploration_allowed": True},
+        "review": {"description": "Request a support review", "target": "ticket",
+                   "risk_tier": "low", "exploration_allowed": True},
+    },
+    configuration={"strategy": "posterior_sampling"},
+)
+decision = await client.proofloop.decide(
+    policy_key="support.reply.v1", user_id="customer-42", mode="auto",
+    context={"issue": "delivery"},
+    candidates=[{"action_key": "explain"}, {"action_key": "review"}],
+    idempotency_key="ticket-42-decision",
+)
+# Your application checks permission and performs the action separately.
+# Here success is the actual result supplied by that application, not a prediction.
+await client.proofloop.record_outcome(
+    decision["decision_id"], success=success,
+    idempotency_key="ticket-42-result",
+)
+```
+
+`success` must come from your application or an independently authorized
+verifier. Do not report the recommendation itself as a successful execution.
+Keep action identities and required context stable. Use a new policy/version
+when changing what an action or outcome means. See the
+[recommended defaults](https://hebbrix.com/docs/learning).
+
+## Advice and integration boundaries
+
+`proofloop.action_advice(...)` reads the exact configured action and context.
+The canonical `gate` is `ASK`, `REVIEW`, `ACT`, or `BLOCK`. `BLOCK` dominates;
+`ACT` is advice, not permission. Apply your own current authorization and human
+approval policy before executing any tool. Do not infer permission from a score.
+
+Version 2.6.2 adds compact advice, batch, and explicit confirmation helpers.
+They require matching Round9 server routes. Compact views retain scope and safety
+caveats; complete receipts remain on the server.
 
 ## Durable readiness
 
@@ -152,7 +172,7 @@ The production API publishes exact build and artifact compatibility at
 [`GET /v1/release`](https://api.hebbrix.com/v1/release). The public OpenAPI is
 [`/openapi.json`](https://api.hebbrix.com/openapi.json).
 
-- [Documentation](https://docs.hebbrix.com)
+- [Documentation](https://hebbrix.com/docs)
 - [API reference](https://api.hebbrix.com/docs)
 - [PyPI files](https://pypi.org/project/hebbrix/#files)
 - [Support](https://www.hebbrix.com/contact)
@@ -160,14 +180,25 @@ The production API publishes exact build and artifact compatibility at
 ## License
 
 MIT. See `LICENSE` in the distribution.
-## Native experience workflow (prerelease)
+## Advanced evidence workflows
 
 The current source includes `client.experiences`, bounded reflection workers,
 separate lesson review/revision and explicit one-use execution admission. These
-methods require the matching new backend; the published 2.5.0 release does not
-include this extension. The candidate package supplies `hebbrix-reflect --help`.
+methods require the server's published compatibility contract and separately
+scoped credentials. The package supplies `hebbrix-reflect --help`.
 Importing it does not call a model, approve a lesson or execute a tool.
 
-See `docs/native-experience-operations.md` for role scopes,
+See the [documentation](https://hebbrix.com/docs) for role scopes,
 uncertain-call recovery, exact-request binding and policy rollback. Do not treat a
 lesson, score, review or issued permit as execution permission.
+
+## Stability
+
+Stable SDK versions follow semantic versioning. Patch updates correct defects;
+new optional fields and methods are additive. Existing required context, action
+identity, owner scope, and historical outcomes are not silently rewritten.
+Experimental APIs are marked separately. Security and correctness guards may
+be tightened immediately; migrations and other incompatible changes must be
+documented with their supported replacement. Read [CHANGELOG.md](CHANGELOG.md)
+before upgrading and pin versions in production. Release cadence is not a
+performance, compliance, or reliability guarantee.

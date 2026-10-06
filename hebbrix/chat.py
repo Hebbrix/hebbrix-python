@@ -11,9 +11,25 @@ Example:
 """
 
 from typing import Any, Dict, List, Optional
+import math
 
 import requests
 from hebbrix.client import MemoryClient
+
+
+def _chat_readiness_options(wait_for_learning_seconds, include_low_confidence):
+    if (isinstance(wait_for_learning_seconds, bool) or
+        not isinstance(wait_for_learning_seconds, (int, float)) or
+        not math.isfinite(wait_for_learning_seconds) or
+        not 0 <= wait_for_learning_seconds <= 20):
+        raise ValueError("wait_for_learning_seconds must be between 0 and 20")
+    if type(include_low_confidence) is not bool:
+        raise ValueError("include_low_confidence must be explicitly Boolean")
+    return {
+        **({"wait_for_learning_seconds": wait_for_learning_seconds}
+           if wait_for_learning_seconds else {}),
+        **({"include_low_confidence": True} if include_low_confidence else {}),
+    }
 
 
 class MemoryChat:
@@ -94,6 +110,8 @@ class MemoryChat:
         session_id: str,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        *, wait_for_learning_seconds: float = 0,
+        include_low_confidence: bool = False,
     ) -> str:
         """
         Send a message and get a response with automatic memory integration.
@@ -122,6 +140,7 @@ class MemoryChat:
             "prompt_strategy": self.prompt_strategy,
             "memory_limit": self.memory_limit,
             "temperature": temperature,
+            **_chat_readiness_options(wait_for_learning_seconds, include_low_confidence),
         }
 
         if max_tokens:
@@ -146,6 +165,8 @@ class MemoryChat:
         session_id: str,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        *, wait_for_learning_seconds: float = 0,
+        include_low_confidence: bool = False,
     ) -> Dict[str, Any]:
         """
         Send a message and get full response with memory context.
@@ -176,6 +197,7 @@ class MemoryChat:
             "prompt_strategy": self.prompt_strategy,
             "memory_limit": self.memory_limit,
             "temperature": temperature,
+            **_chat_readiness_options(wait_for_learning_seconds, include_low_confidence),
         }
 
         if max_tokens:
