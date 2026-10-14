@@ -121,9 +121,11 @@ def _snapshot_advisor_inputs(candidates, context):
             "action_key",
             "description",
             "features",
+            "memory_ids",
         }:
             raise ValueError(
-                "candidates must contain only action_key, description and features"
+                "candidates must contain only action_key, description, features "
+                "and memory_ids"
             )
         key = candidate.get("action_key")
         if (
@@ -145,6 +147,18 @@ def _snapshot_advisor_inputs(candidates, context):
             )
         if "features" in candidate and type(candidate["features"]) is not dict:
             raise ValueError("candidate features must be a JSON object")
+        memory_ids = candidate.get("memory_ids")
+        if memory_ids is not None and (
+            type(memory_ids) is not list
+            or len(memory_ids) > 50
+            or any(
+                type(memory_id) is not str or not 1 <= len(memory_id) <= 255
+                for memory_id in memory_ids
+            )
+        ):
+            raise ValueError(
+                "candidate memory_ids must be a list of at most 50 memory ids"
+            )
         keys.append(key)
     return candidates_copy, context_copy, keys
 

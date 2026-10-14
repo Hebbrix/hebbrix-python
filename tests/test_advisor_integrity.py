@@ -274,3 +274,33 @@ async def test_cyclic_json_is_refused_before_read(kind):
     with pytest.raises(ValueError):
         await invoke(kind, client, params, advisor)
     client.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["sync", "async"])
+async def test_candidate_memory_ids_reach_the_decision_unchanged(kind):
+    """A candidate may bind the memories its action applies (outcome credit)."""
+    client = transport(kind)
+    params = inputs()
+    params["candidates"][1]["memory_ids"] = ["runbook-memory", "checklist-memory"]
+    await invoke(kind, client, params, Mock(return_value=choice()))
+    candidates = client.post.call_args.kwargs["json"]["candidates"]
+    assert candidates[1]["memory_ids"] == ["runbook-memory", "checklist-memory"]
+    assert "memory_ids" not in candidates[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["sync", "async"])
+@pytest.mark.parametrize(
+    "memory_ids",
+    ["runbook-memory", [""], ["x" * 256], [7], ["m"] * 51, {"id": "m"}],
+)
+async def test_invalid_candidate_memory_ids_fail_before_reads(kind, memory_ids):
+    client, advisor = transport(kind), Mock(return_value=choice())
+    params = inputs()
+    params["candidates"][0]["memory_ids"] = memory_ids
+    with pytest.raises(ValueError):
+        await invoke(kind, client, params, advisor)
+    client.get.assert_not_called()
+    client.post.assert_not_called()
+    advisor.assert_not_called()

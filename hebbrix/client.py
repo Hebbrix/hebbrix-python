@@ -93,7 +93,7 @@ class MemoryClient:
         """Get request headers."""
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.2",
+            "User-Agent": "hebbrix-python/2.6.3",
         }
 
         if self.api_key:

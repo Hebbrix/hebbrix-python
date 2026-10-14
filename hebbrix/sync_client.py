@@ -649,6 +649,15 @@ class SyncProofLoopResource:
         idempotency_key: Optional[str] = None,
         **kwargs,
     ) -> Dict[str, Any]:
+        """Log one decision among 1-50 candidate actions.
+
+        Each candidate is ``{"action_key": str, "description"?: str,
+        "features"?: dict, "memory_ids"?: list[str]}``. ``memory_ids`` (at most
+        50) names the exact memories the action applies, such as its runbook;
+        when that candidate becomes the decision's action, its outcome is
+        credited to those memories. A ``proof_context`` attests what was
+        retrieved but never earns per-memory outcome credit by itself.
+        """
         token = (
             proof_context.get("token")
             if isinstance(proof_context, dict)
@@ -1110,7 +1119,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.2",
+            "User-Agent": "hebbrix-python/2.6.3",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

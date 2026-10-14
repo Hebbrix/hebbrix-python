@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.3 — 2026-10-14 (candidate memory_ids)
+
+- Candidates may carry optional `memory_ids` (at most 50 ids of 1-255 characters) naming the exact memories that action applies; when the candidate becomes the decision's action, its outcome is credited to those memories.
+- The advisor input snapshot (`decide_with_advice`) admits and validates `memory_ids` before any evidence read, callback or write; `proofloop.decide` documents the candidate shape.
+- Requires the server release that credits outcomes only to memories bound to the action taken; a `proof_context` attests what was retrieved and no longer earns per-memory outcome credit by itself.
+
 ## 2.6.2 — 2026-10-06 (compact advice, batches and confirmation)
 
 - Correct canonical documentation metadata and simplify the stable three-call guide.
