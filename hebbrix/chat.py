@@ -32,6 +32,34 @@ def _chat_readiness_options(wait_for_learning_seconds, include_low_confidence):
     }
 
 
+_ANSWER_STYLES = ("natural", "quote")
+
+
+def _chat_answer_options(answer_style, no_information_reply):
+    """Optional reply-phrasing fields; omitted unless set (server defaults apply).
+
+    answer_style: "natural" (server default) composes a plain reply from the
+    stored sources a personal question is answered from; "quote" returns that
+    source text verbatim. no_information_reply replaces the default reply
+    ("I don't know that yet.") when no stored source answers.
+    """
+    if answer_style is not None and answer_style not in _ANSWER_STYLES:
+        raise ValueError("answer_style must be 'natural' or 'quote'")
+    if no_information_reply is not None and (
+        not isinstance(no_information_reply, str)
+        or not 1 <= len(no_information_reply) <= 500
+    ):
+        raise ValueError("no_information_reply must be 1-500 characters")
+    return {
+        **({"answer_style": answer_style} if answer_style is not None else {}),
+        **(
+            {"no_information_reply": no_information_reply}
+            if no_information_reply is not None
+            else {}
+        ),
+    }
+
+
 class MemoryChat:
     """
     Simple chat interface with automatic memory integration.
@@ -112,6 +140,8 @@ class MemoryChat:
         max_tokens: Optional[int] = None,
         *, wait_for_learning_seconds: float = 0,
         include_low_confidence: bool = False,
+        answer_style: Optional[str] = None,
+        no_information_reply: Optional[str] = None,
     ) -> str:
         """
         Send a message and get a response with automatic memory integration.
@@ -123,6 +153,12 @@ class MemoryChat:
             session_id: Session identifier (user ID or conversation ID)
             temperature: Response randomness (0-2, default: 0.7)
             max_tokens: Maximum response length (default: None)
+            answer_style: "natural" (server default) or "quote" (verbatim
+                stored source text) for personal questions answered from memory
+            no_information_reply: Reply when no stored source answers
+            answer_style: "natural" (server default) or "quote" (verbatim
+                stored source text) for personal questions answered from memory
+            no_information_reply: Reply when no stored source answers
 
         Returns:
             Assistant's response as a string
@@ -141,6 +177,7 @@ class MemoryChat:
             "memory_limit": self.memory_limit,
             "temperature": temperature,
             **_chat_readiness_options(wait_for_learning_seconds, include_low_confidence),
+            **_chat_answer_options(answer_style, no_information_reply),
         }
 
         if max_tokens:
@@ -167,6 +204,8 @@ class MemoryChat:
         max_tokens: Optional[int] = None,
         *, wait_for_learning_seconds: float = 0,
         include_low_confidence: bool = False,
+        answer_style: Optional[str] = None,
+        no_information_reply: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Send a message and get full response with memory context.
@@ -178,6 +217,12 @@ class MemoryChat:
             session_id: Session identifier
             temperature: Response randomness (0-2, default: 0.7)
             max_tokens: Maximum response length (default: None)
+            answer_style: "natural" (server default) or "quote" (verbatim
+                stored source text) for personal questions answered from memory
+            no_information_reply: Reply when no stored source answers
+            answer_style: "natural" (server default) or "quote" (verbatim
+                stored source text) for personal questions answered from memory
+            no_information_reply: Reply when no stored source answers
 
         Returns:
             Full response dict with memory context
@@ -198,6 +243,7 @@ class MemoryChat:
             "memory_limit": self.memory_limit,
             "temperature": temperature,
             **_chat_readiness_options(wait_for_learning_seconds, include_low_confidence),
+            **_chat_answer_options(answer_style, no_information_reply),
         }
 
         if max_tokens:

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.0 — 2026-10-19 (compact responses, entity scope, chat answers)
+
+- Behaviour change: `search()` and `search_with_proof()` now request `view="compact"` by default (rows keep content, identity, score, rank, timestamps, `low_confidence` and entity scope; the safety envelope and proof context are unchanged; ranking diagnostics need `debug=True`). Pass `view="full"` for the previous per-row metadata. `search()` returns rows only and no longer requests the unused ProofLoop token unless `include_proof_context=True`.
+- `reason()` now requests `view="compact"` by default: the answer, abstention fields (`decision_abstained`, `abstain_reason`), cited sources and safety envelope are kept and the internal decision diagnostics are omitted. Pass `view="full"` or `debug=True` for the full response.
+- Add `prefer_entity_match` (both search methods) and `include_profile` (`search_with_proof`), sent only when enabled; type `query_entities`, `profile` and `view` on the search envelope.
+- `MemoryChat.send()` and `send_with_context()` accept optional `answer_style` (`"natural"`, the server default, or `"quote"`) and `no_information_reply`; they are sent only when set.
+- Requires the server release of 2026-10-19 for the `/search/reason` compact view; the other options are accepted by current servers.
+
 ## 2.6.3 — 2026-10-14 (candidate memory_ids)
 
 - Candidates may carry optional `memory_ids` (at most 50 ids of 1-255 characters) naming the exact memories that action applies; when the candidate becomes the decision's action, its outcome is credited to those memories.
@@ -12,7 +20,7 @@
 - Add optional compact search/advice, bounded independently committed decision/outcome batches, and explicit caller-confirmation transports.
 - Add bounded chat-learning wait options while preserving the original job receipt.
 - Keep historical confidence scope aliases, ACT-as-advice and protected outcome boundaries intact.
-- Requires matching Round9 server routes; no benchmark superiority, latency SLA or automatic execution is implied.
+- Requires a matching server release; no benchmark superiority, latency SLA or automatic execution is implied.
 
 ## 2.6.1 — 2026-10-04 (advisory horizon helpers)
 

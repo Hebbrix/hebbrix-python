@@ -992,6 +992,101 @@ class CorrectionsResource(BaseResource):
         return await self.client.delete(f"/v1/corrections/{correction_id}")
 
 
+def _search_payload(
+    query: str,
+    *,
+    collection_id: Optional[str] = None,
+    limit: int = 10,
+    search_type: str = "hybrid",
+    filters: Optional[Dict[str, Any]] = None,
+    user_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    run_id: Optional[str] = None,
+    fast: Optional[bool] = None,
+    threshold: Optional[float] = None,
+    include_low_confidence: bool = False,
+    group_by_source: bool = True,
+    debug: bool = False,
+    view: Optional[str] = "compact",
+    include_proof_context: Optional[bool] = None,
+    prefer_entity_match: bool = False,
+    include_profile: bool = False,
+) -> Dict[str, Any]:
+    """Build the identical /v1/search body for sync and async clients.
+
+    ``view`` defaults to ``"compact"``: rows keep content, identity, score,
+    rank, timestamps, confidence and entity scope, and the safety envelope and
+    proof context are unchanged; ranking diagnostics are omitted unless
+    ``debug=True``. Pass ``view="full"`` for the complete per-row metadata.
+    New opt-in fields are sent only when enabled, so older servers that
+    reject unknown fields keep accepting default requests.
+    """
+
+    _validate_advice_view(view)
+    payload: Dict[str, Any] = {
+        "query": query,
+        "collection_id": collection_id,
+        "user_id": user_id,
+        "agent_id": agent_id,
+        "run_id": run_id,
+        "limit": limit,
+        "search_type": search_type,
+        "filters": filters or {},
+        "include_low_confidence": include_low_confidence,
+        "group_by_source": group_by_source,
+        "debug": debug,
+        "view": view,
+        "include_proof_context": include_proof_context,
+    }
+    if fast is not None:
+        payload["fast"] = fast
+    if threshold is not None:
+        payload["threshold"] = threshold
+    if prefer_entity_match:
+        payload["prefer_entity_match"] = True
+    if include_profile:
+        payload["include_profile"] = True
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _reason_payload(
+    query: str,
+    *,
+    collection_id: Optional[str] = None,
+    provider: Optional[str] = None,
+    include_steps: bool = False,
+    user_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    run_id: Optional[str] = None,
+    facets: Optional[List[str]] = None,
+    view: str = "compact",
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Build the identical /v1/search/reason body for sync and async clients.
+
+    ``view`` defaults to ``"compact"``: the answer, abstention fields, cited
+    sources and safety envelope are kept and the internal decision
+    diagnostics are omitted; ``view="full"`` or ``debug=True`` returns them.
+    """
+
+    if view not in {"compact", "full"}:
+        raise ValueError("view must be 'compact' or 'full'")
+    payload: Dict[str, Any] = {
+        "query": query,
+        "collection_id": collection_id,
+        "provider": provider,
+        "include_steps": include_steps,
+        "user_id": user_id,
+        "agent_id": agent_id,
+        "run_id": run_id,
+        "facets": facets or [],
+        "view": view,
+    }
+    if debug:
+        payload["debug"] = True
+    return payload
+
+
 class SearchResource(BaseResource):
     """Search and reasoning endpoints."""
 
@@ -1010,7 +1105,9 @@ class SearchResource(BaseResource):
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
-        view: Optional[str] = None,
+        view: Optional[str] = "compact",
+        include_proof_context: Optional[bool] = False,
+        prefer_entity_match: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Search memories.
@@ -1021,6 +1118,11 @@ class SearchResource(BaseResource):
             limit: Number of results
             search_type: Type of search (hybrid, vector, bm25, graph)
             filters: Additional filters
+            view: ``"compact"`` (default) or ``"full"`` per-row metadata
+            include_proof_context: This method returns only the rows, so the
+                ProofLoop token is not requested by default; use
+                ``search_with_proof`` to keep it.
+            prefer_entity_match: Rank rows naming the query's entities first.
 
         Returns:
             Search results
@@ -1040,6 +1142,8 @@ class SearchResource(BaseResource):
             group_by_source=group_by_source,
             debug=debug,
             view=view,
+            include_proof_context=include_proof_context,
+            prefer_entity_match=prefer_entity_match,
         )
         return response["results"]
 
@@ -1058,36 +1162,41 @@ class SearchResource(BaseResource):
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
-        view: Optional[str] = None,
+        view: Optional[str] = "compact",
+        include_proof_context: Optional[bool] = None,
+        prefer_entity_match: bool = False,
+        include_profile: bool = False,
     ) -> SearchSafetyEnvelope:
         """Search and preserve the automatic ProofLoop context.
 
         The legacy ``search`` method still returns only the result list. Use
-        this method when the selected evidence will feed a learned decision.
+        this method when the selected evidence will feed a learned decision,
+        or to read ``profile`` (``include_profile=True``) and
+        ``query_entities``. Responses are compact by default; pass
+        ``view="full"`` or ``debug=True`` for diagnostics.
         """
 
-        _validate_advice_view(view)
-        payload: Dict[str, Any] = {
-            "query": query,
-            "collection_id": collection_id,
-            "user_id": user_id,
-            "agent_id": agent_id,
-            "run_id": run_id,
-            "limit": limit,
-            "search_type": search_type,
-            "filters": filters or {},
-            "include_low_confidence": include_low_confidence,
-            "group_by_source": group_by_source,
-            "debug": debug,
-            "view": view,
-        }
-        if fast is not None:
-            payload["fast"] = fast
-        if threshold is not None:
-            payload["threshold"] = threshold
         response = await self.client.post(
             "/v1/search",
-            json={key: value for key, value in payload.items() if value is not None},
+            json=_search_payload(
+                query,
+                collection_id=collection_id,
+                limit=limit,
+                search_type=search_type,
+                filters=filters,
+                user_id=user_id,
+                agent_id=agent_id,
+                run_id=run_id,
+                fast=fast,
+                threshold=threshold,
+                include_low_confidence=include_low_confidence,
+                group_by_source=group_by_source,
+                debug=debug,
+                view=view,
+                include_proof_context=include_proof_context,
+                prefer_entity_match=prefer_entity_match,
+                include_profile=include_profile,
+            ),
         )
         return _canonical_search_envelope(response)
 
@@ -1123,6 +1232,8 @@ class SearchResource(BaseResource):
         agent_id: Optional[str] = None,
         run_id: Optional[str] = None,
         facets: Optional[List[str]] = None,
+        view: str = "compact",
+        debug: bool = False,
     ) -> SearchSafetyEnvelope:
         """
         Perform reasoning over memories.
@@ -1136,22 +1247,26 @@ class SearchResource(BaseResource):
             agent_id: Agent isolation scope
             run_id: Run isolation scope
             facets: Optional typed decomposition facets
+            view: ``"compact"`` (default) or ``"full"`` diagnostics
+            debug: Return the full diagnostic response
 
         Returns:
             Reasoning result with answer and sources
         """
         response = await self.client.post(
             "/v1/search/reason",
-            json={
-                "query": query,
-                "collection_id": collection_id,
-                "provider": provider,
-                "include_steps": include_steps,
-                "user_id": user_id,
-                "agent_id": agent_id,
-                "run_id": run_id,
-                "facets": facets or [],
-            },
+            json=_reason_payload(
+                query,
+                collection_id=collection_id,
+                provider=provider,
+                include_steps=include_steps,
+                user_id=user_id,
+                agent_id=agent_id,
+                run_id=run_id,
+                facets=facets,
+                view=view,
+                debug=debug,
+            ),
         )
         return _canonical_search_envelope(response, rows_key="sources")
 
@@ -1642,6 +1757,9 @@ class RLResource(BaseResource):
         """
         Train the Memory Manager agent using RL.
 
+        Operator-only: the server requires a Hebbrix administrator session and
+        refuses API keys with 403, so this route is not in the public OpenAPI.
+
         Args:
             num_episodes: Number of training episodes
             **kwargs: Additional training parameters
@@ -1664,6 +1782,9 @@ class RLResource(BaseResource):
     ) -> Dict[str, Any]:
         """
         Train the Answer Agent using RL.
+
+        Operator-only: the server requires a Hebbrix administrator session and
+        refuses API keys with 403, so this route is not in the public OpenAPI.
 
         Args:
             num_episodes: Number of training episodes

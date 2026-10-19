@@ -53,3 +53,9 @@ class SearchSafetyEnvelope(TypedDict, total=False):
     degraded: bool
     sdk_safety_reason: str
     proof_context: Dict[str, Any]
+    # Entities the query names; each row carries applies_to/entity_match.
+    query_entities: List[str]
+    # Standing profile facts and preferences (search include_profile=True).
+    profile: Dict[str, Any]
+    # "compact" (SDK default) or absent for the full projection.
+    view: str

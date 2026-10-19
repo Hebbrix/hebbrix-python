@@ -17,7 +17,12 @@ from hebbrix.exceptions import (
     ServerError,
     ValidationError,
 )
-from hebbrix.resources import _canonical_search_envelope, _memory_create_payload
+from hebbrix.resources import (
+    _canonical_search_envelope,
+    _memory_create_payload,
+    _reason_payload,
+    _search_payload,
+)
 from hebbrix._advice import _snapshot_advisor_inputs, _validated_advisor_selection, _validate_advisor_scope, _validate_advisor_horizon
 
 
@@ -576,35 +581,39 @@ class SyncSearchResource:
         include_low_confidence: bool = False,
         group_by_source: bool = True,
         debug: bool = False,
-        view: Optional[str] = None,
+        view: Optional[str] = "compact",
+        include_proof_context: Optional[bool] = None,
+        prefer_entity_match: bool = False,
+        include_profile: bool = False,
     ) -> Dict[str, Any]:
-        from ._advice import _validate_advice_view
-        _validate_advice_view(view)
-        payload: Dict[str, Any] = {
-            "query": query,
-            "collection_id": collection_id,
-            "user_id": user_id,
-            "agent_id": agent_id,
-            "run_id": run_id,
-            "limit": limit,
-            "search_type": search_type,
-            "filters": filters or {},
-            "include_low_confidence": include_low_confidence,
-            "group_by_source": group_by_source,
-            "debug": debug,
-            "view": view,
-        }
-        if fast is not None:
-            payload["fast"] = fast
-        if threshold is not None:
-            payload["threshold"] = threshold
         response = self.client.post(
             "/v1/search",
-            json={key: value for key, value in payload.items() if value is not None},
+            json=_search_payload(
+                query,
+                collection_id=collection_id,
+                limit=limit,
+                search_type=search_type,
+                filters=filters,
+                user_id=user_id,
+                agent_id=agent_id,
+                run_id=run_id,
+                fast=fast,
+                threshold=threshold,
+                include_low_confidence=include_low_confidence,
+                group_by_source=group_by_source,
+                debug=debug,
+                view=view,
+                include_proof_context=include_proof_context,
+                prefer_entity_match=prefer_entity_match,
+                include_profile=include_profile,
+            ),
         )
         return _canonical_search_envelope(response)
 
     def search(self, *args, **kwargs) -> List[Dict[str, Any]]:
+        # Only the rows are returned, so the proof token is not requested
+        # unless the caller asks for it (parity with the async client).
+        kwargs.setdefault("include_proof_context", False)
         return self.search_with_proof(*args, **kwargs).get("results", [])
 
     def reason(
@@ -617,19 +626,23 @@ class SyncSearchResource:
         agent_id: Optional[str] = None,
         run_id: Optional[str] = None,
         facets: Optional[List[str]] = None,
+        view: str = "compact",
+        debug: bool = False,
     ) -> Dict[str, Any]:
         response = self.client.post(
             "/v1/search/reason",
-            json={
-                "query": query,
-                "collection_id": collection_id,
-                "provider": provider,
-                "include_steps": include_steps,
-                "user_id": user_id,
-                "agent_id": agent_id,
-                "run_id": run_id,
-                "facets": facets or [],
-            },
+            json=_reason_payload(
+                query,
+                collection_id=collection_id,
+                provider=provider,
+                include_steps=include_steps,
+                user_id=user_id,
+                agent_id=agent_id,
+                run_id=run_id,
+                facets=facets,
+                view=view,
+                debug=debug,
+            ),
         )
         return _canonical_search_envelope(response, rows_key="sources")
 
@@ -1119,7 +1132,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.3",
+            "User-Agent": "hebbrix-python/2.7.0",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

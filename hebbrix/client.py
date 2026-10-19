@@ -93,7 +93,7 @@ class MemoryClient:
         """Get request headers."""
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.6.3",
+            "User-Agent": "hebbrix-python/2.7.0",
         }
 
         if self.api_key:
@@ -332,6 +332,8 @@ class MemoryClient:
         agent_id: Optional[str] = None,
         run_id: Optional[str] = None,
         facets: Optional[List[str]] = None,
+        view: str = "compact",
+        debug: bool = False,
     ) -> Dict[str, Any]:
         """
         Perform reasoning over memories.
@@ -345,6 +347,8 @@ class MemoryClient:
             agent_id: Agent isolation scope
             run_id: Run isolation scope
             facets: Optional typed decomposition facets
+            view: ``"compact"`` (default) or ``"full"`` diagnostics
+            debug: Return the full diagnostic response
 
         Returns:
             Reasoning result with answer and sources
@@ -358,6 +362,8 @@ class MemoryClient:
             agent_id=agent_id,
             run_id=run_id,
             facets=facets,
+            view=view,
+            debug=debug,
         )
 
     async def close(self):

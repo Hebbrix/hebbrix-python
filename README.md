@@ -2,14 +2,14 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-The current stable package is **2.6.3**. Start with memory storage and search, or
+The current stable package is **2.7.0**. Start with memory storage and search, or
 the three-call outcome-learning workflow below. Advanced evidence and execution
 permission transports are opt-in; installing the SDK never permits an action.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.6.3
+pip install hebbrix==2.7.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
@@ -88,13 +88,21 @@ The canonical `gate` is `ASK`, `REVIEW`, `ACT`, or `BLOCK`. `BLOCK` dominates;
 `ACT` is advice, not permission. Apply your own current authorization and human
 approval policy before executing any tool. Do not infer permission from a score.
 
+Version 2.7.0 makes search and reason responses compact by default: rows keep
+content, identity, score, timestamps, confidence and entity scope (`applies_to`,
+`entity_match`), and Reason keeps the answer, `decision_abstained`,
+`abstain_reason` and cited sources. Pass `view="full"` or `debug=True` for
+diagnostics. `search_with_proof(include_profile=True)` returns standing profile
+facts and preferences, and `MemoryChat.send(answer_style="quote")` returns the
+stored source text verbatim instead of a plain-language reply.
+
 Version 2.6.3 lets each `proofloop.decide` candidate carry `memory_ids`: the exact
 memories that action applies. When that candidate becomes the decision's action,
 its outcome is credited to those memories; a `proof_context` attests what was
 retrieved but never earns per-memory outcome credit by itself.
 
 Version 2.6.2 adds compact advice, batch, and explicit confirmation helpers.
-They require matching Round9 server routes. Compact views retain scope and safety
+They require a matching server release. Compact views retain scope and safety
 caveats; complete receipts remain on the server.
 
 ## Durable readiness
