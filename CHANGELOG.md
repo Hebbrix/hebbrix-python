@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.10.0 — 2026-11-12 (applicable rules, consistent abstention flags)
+
+- An `unverified` search response whose rows include `evidence_role: "applicable_rule"` (server 1.4.27) returns reason `applicable_rule` and action `use_as_context`, those rules first in `decision.context`: policy that speaks to the asked case but that the API has not verified decides it. Let your model apply it, or call `reason`. A rule is never an authorization; `authorization_not_verifiable` still comes first.
+- `history=True` no longer overrides an explicit abstention flag on an `answerable` response: a response marked `answerable` that also sets `no_match`, `abstain_recommended` or `decision_abstained` contradicts itself and is declined in every mode, with that flag as the reason. History mode still answers a `superseded` response from its earlier versions (its flags concern the present), never one with `no_match`.
+
 ## 2.9.0 — 2026-11-11 (high-stakes readiness, history and suggestions)
 
 - `should_answer(response, require_ready=True)` (also on `usable_memories` and `answer_context`): for high-stakes flows, holds the answer with action `retry` and reason `index_not_ready` until `indexing.status` is `ready` and `indexing.answer_risk` is `none`. A response that does not report its indexing is not ready.

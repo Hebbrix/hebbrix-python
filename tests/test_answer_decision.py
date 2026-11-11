@@ -424,3 +424,89 @@ def test_a_suggestion_is_context_to_shape_never_an_answer():
     assert decision.action == "use_as_context"
     assert decision.memories == []
     assert ids(decision.context) == ["camera"]
+
+
+@pytest.mark.parametrize("flag", ["abstain_recommended", "decision_abstained", "no_match"])
+def test_an_answerable_status_beside_an_abstention_flag_fails_closed_in_every_mode(flag):
+    # A contradictory envelope (the server never sends one): answerable, an
+    # explicit abstention flag, and only an earlier, unestablished row.
+    page = search(
+        [
+            row(
+                "synthetic-history",
+                revision_status="historical",
+                is_current=False,
+                low_confidence=True,
+            )
+        ],
+        indexing={"status": "ready", "answer_risk": "none"},
+        **{flag: True},
+    )
+    for options in ({}, {"history": True}, {"history": True, "require_ready": True}):
+        decision = should_answer(page, **options)
+        assert not decision
+        assert decision.reason == flag
+        assert decision.action == "abstain"
+        assert decision.memories == []
+        assert usable_memories(page, **options) == []
+
+
+def test_a_superseded_reason_result_still_answers_a_history_question():
+    # Reason marks a result superseded only when it abstains for the present
+    # (decision_abstained), so that flag is what a question about the past reads.
+    page = reason(
+        [source("old", is_current=False, revision_status="superseded")],
+        answer=None,
+        decision_abstained=True,
+        answer_status="superseded",
+    )
+    assert not should_answer(page)
+    decision = should_answer(page, history=True)
+    assert decision
+    assert decision.reason == "history"
+    assert ids(decision.memories) == ["old"]
+
+
+def test_history_never_answers_a_response_that_matched_nothing():
+    page = search(
+        [row("old", is_current=False, revision_status="superseded", low_confidence=True)],
+        answer_status="superseded",
+        abstain_recommended=True,
+        no_match=True,
+    )
+    decision = should_answer(page, history=True)
+    assert not decision
+    assert decision.reason == "superseded"
+
+
+def test_an_applicable_rule_is_policy_context_never_an_answer():
+    rows = [
+        row("case", low_confidence=True, evidence_role="related"),
+        row("rule", low_confidence=True, evidence_role="applicable_rule"),
+    ]
+    page = search(
+        rows,
+        answer_status="unverified",
+        abstain_recommended=True,
+        confidence_reason="soft_claim_candidate",
+    )
+    decision = should_answer(page)
+    assert not decision
+    assert decision.reason == "applicable_rule"
+    assert decision.action == "use_as_context"
+    assert decision.memories == []
+    assert ids(decision.context) == ["rule", "case"]
+    assert usable_memories(page) == []
+
+
+def test_a_rule_never_answers_an_authorization_question():
+    rows = [row("rule", low_confidence=True, evidence_role="applicable_rule")]
+    page = search(
+        rows,
+        answer_status="unverified",
+        abstain_recommended=True,
+        confidence_reason="authorization_not_verifiable",
+    )
+    decision = should_answer(page)
+    assert not decision
+    assert decision.reason == "authorization_not_verifiable"

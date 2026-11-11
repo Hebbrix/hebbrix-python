@@ -127,6 +127,12 @@ def _ready(response: Mapping[str, Any]) -> bool:
     )
 
 
+_ABSTENTION_FLAGS = ("no_match", "abstain_recommended", "decision_abstained")
+# A row's evidence_role for a current rule that speaks to the asked case but is
+# not verified to decide it (see ``should_answer``).
+APPLICABLE_RULE = "applicable_rule"
+
+
 def should_answer(
     response: Optional[Mapping[str, Any]],
     *,
@@ -151,14 +157,28 @@ def should_answer(
     recognises ("Where did I live before?"). It overrides one thing: a
     superseded or historical row then counts as evidence, so a response the
     server answered or marked ``superseded`` can be answered from its earlier
-    versions. It never overrides ``unverified``, ``no_relevant_memory``,
-    ``indexing``, ``conflicting`` or ``authorization_not_verifiable``. Keep each
+    versions (a superseded response's ``abstain_recommended`` or
+    ``decision_abstained`` concerns the present, so it does not bar this). It
+    never overrides ``unverified``, ``no_relevant_memory``, ``indexing``,
+    ``conflicting``, ``authorization_not_verifiable`` or ``no_match``.
+
+    A response marked ``answerable`` that also sets ``no_match``,
+    ``abstain_recommended`` or ``decision_abstained`` contradicts itself; the
+    server never sends one, and this helper declines it, with that flag as
+    the reason, in every mode. Keep each
     row's ``revision_status`` and ``stated_at`` in what you pass to the model, so
     it can tell the versions apart.
 
     A Reason result for a suggestion or plan (``context_only``) returns action
     ``use_as_context``: give ``decision.context`` to your model to shape what it
     suggests, never as an established fact or a permission to act.
+
+    An ``unverified`` search response whose rows include an
+    ``evidence_role: applicable_rule`` row returns reason ``applicable_rule``
+    and action ``use_as_context``, with those rules first in
+    ``decision.context``: policy that speaks to the asked case but that the
+    API has not verified decides it. Let your model apply it (and say so), or
+    ask ``reason``, which applies stored rules to the case and cites them.
     """
 
     if not isinstance(response, Mapping) or "answer_status" not in response:
@@ -183,16 +203,32 @@ def should_answer(
         return declined(CONTEXT_ONLY, USE_AS_CONTEXT)
     if require_ready and not _ready(response):
         return declined(INDEX_NOT_READY, "retry")
-    if history and status in ("answerable", "superseded"):
+    flags = [flag for flag in _ABSTENTION_FLAGS if response.get(flag) is True]
+    if status == "answerable" and flags:
+        # The server never marks a response answerable while it recommends
+        # abstaining. An envelope that does contradicts itself, and a
+        # contradiction is not an answer, in history mode or not.
+        return declined(flags[0], "abstain")
+    if history and status in ("answerable", "superseded") and "no_match" not in flags:
+        # A superseded response recommends abstaining for the present: every
+        # relevant record states a value that no longer holds. That is what a
+        # question about the past reads, so those flags do not bar it here.
         usable = [row for row in rows if _is_history(row, search_row=search_rows)]
         if usable:
             others = [row for row in rows if row not in usable]
             return AnswerDecision(True, "history", "answer", usable, others, cited)
+    if status == "unverified":
+        rules = [row for row in rows if row.get("evidence_role") == APPLICABLE_RULE]
+        if rules:
+            # A rule that speaks to the asked case, not verified to decide
+            # it: policy for your model to apply, never an established answer
+            # or a permission (authorization questions were declined above).
+            others = [row for row in rows if row not in rules]
+            return AnswerDecision(
+                False, APPLICABLE_RULE, USE_AS_CONTEXT, [], [*rules, *others], cited
+            )
     if status != "answerable":
         return declined(status, ACTIONS[status])
-    for flag in ("no_match", "abstain_recommended", "decision_abstained"):
-        if response.get(flag) is True:
-            return declined(flag, "abstain")
     usable = [row for row in rows if _is_evidence(row, search_row=search_rows)]
     if not usable:
         return declined("no_usable_memories", "abstain")
