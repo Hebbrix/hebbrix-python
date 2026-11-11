@@ -36,15 +36,92 @@ class EvidenceClaim(TypedDict, total=False):
     claims: Dict[str, Any]
 
 
+AnswerStatus = Literal[
+    "answerable",
+    "conflicting",
+    "superseded",
+    "unverified",
+    "indexing",
+    "no_relevant_memory",
+]
+RevisionStatus = Literal["current", "superseded", "conflicting", "historical"]
+
+
+class MemoryRow(TypedDict, total=False):
+    """One search row or Reason source, with its standing among the versions of
+    what it states. Decide what to do with a response in code:
+    ``hebbrix.should_answer``."""
+
+    memory_id: str
+    id: str
+    content: str
+    score: float
+    rank: int
+    metadata: Dict[str, Any]
+    created_at: str
+    updated_at: str
+    # True when the row is not evidence for the question: a retrieval candidate.
+    low_confidence: bool
+    is_current: bool
+    revision_status: RevisionStatus
+    superseded_by: Optional[str]
+    supersedes: Optional[List[str]]
+    conflicts_with: Optional[List[str]]
+    valid_until: Optional[str]
+    stated_at: Optional[str]
+    replaced_values: Optional[List[str]]
+    currency_basis: Optional[Literal["revision", "later_memory"]]
+
+
+class ScopeIndexing(TypedDict, total=False):
+    """Availability of accepted memories in the exact scope searched."""
+
+    status: Literal["ready", "incomplete", "failed", "unknown"]
+    pending_memories: int
+    failed_memories: int
+    capped: bool
+
+
+class MemoryStatus(TypedDict, total=False):
+    """Revision fields of ``GET /v1/memories/{id}`` (also on list and write
+    responses, from the stored link alone)."""
+
+    id: str
+    searchable: bool
+    searchability_reason: str
+    conflict_status: str
+    superseded_by_id: Optional[str]
+    revision_status: RevisionStatus
+    is_current: bool
+    superseded_by: Optional[str]
+    supersedes: Optional[List[str]]
+    valid_until: Optional[str]
+    stated_at: Optional[str]
+    currency_basis: Optional[Literal["revision", "later_memory"]]
+    replaced_values: Optional[List[str]]
+    revision_link_status: Optional[Literal["pending", "completed", "failed"]]
+
+
 class SearchSafetyEnvelope(TypedDict, total=False):
     """Fail-closed response shared by search and reasoning helpers."""
 
     query: str
-    results: List[Dict[str, Any]]
-    sources: List[Dict[str, Any]]
+    results: List[MemoryRow]
+    sources: List[MemoryRow]
     total: int
     no_match: bool
     abstain_recommended: bool
+    # What this response lets a caller do, in one value.
+    answer_status: AnswerStatus
+    indexing: Optional[ScopeIndexing]
+    confidence_reason: Optional[str]
+    # /v1/search/reason: decision_abstained is true exactly when answer is null.
+    answer: Optional[str]
+    decision_abstained: bool
+    abstain_reason: Optional[str]
+    cited_context: Optional[str]
+    reasoning_status: Literal["completed", "partial", "timed_out"]
+    timings: Dict[str, Any]
     query_confidence: float
     grounding: GroundingReceipt
     evidence_ids: List[str]

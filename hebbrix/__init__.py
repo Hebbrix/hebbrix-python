@@ -5,10 +5,16 @@ production OpenAPI and ``GET /v1/users/me/capabilities``. The experimental
 World Model is intentionally absent from this release.
 """
 
-__version__ = "2.7.0"
+__version__ = "2.8.0"
 __author__ = "Hebbrix Team"
 __license__ = "MIT"
 
+from hebbrix.answers import (
+    AnswerDecision,
+    answer_context,
+    should_answer,
+    usable_memories,
+)
 from hebbrix.chat import MemoryChat
 from hebbrix.client import MemoryClient
 from hebbrix.exceptions import (
@@ -21,7 +27,17 @@ from hebbrix.exceptions import (
     ServerError,
     ValidationError,
 )
-from hebbrix.models import ActionAdviceReceipt, EvidenceClaim, GroundingReceipt, SearchSafetyEnvelope
+from hebbrix.models import (
+    ActionAdviceReceipt,
+    AnswerStatus,
+    EvidenceClaim,
+    GroundingReceipt,
+    MemoryRow,
+    MemoryStatus,
+    RevisionStatus,
+    ScopeIndexing,
+    SearchSafetyEnvelope,
+)
 from hebbrix.sync_client import SyncMemoryClient
 
 __all__ = [
@@ -40,4 +56,13 @@ __all__ = [
     "EvidenceClaim",
     "SearchSafetyEnvelope",
     "ActionAdviceReceipt",
+    "AnswerDecision",
+    "AnswerStatus",
+    "MemoryRow",
+    "MemoryStatus",
+    "RevisionStatus",
+    "ScopeIndexing",
+    "answer_context",
+    "should_answer",
+    "usable_memories",
 ]

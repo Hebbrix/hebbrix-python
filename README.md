@@ -2,14 +2,14 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-The current stable package is **2.7.0**. Start with memory storage and search, or
+The current stable package is **2.8.0**. Start with memory storage and search, or
 the three-call outcome-learning workflow below. Advanced evidence and execution
 permission transports are opt-in; installing the SDK never permits an action.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.7.0
+pip install hebbrix==2.8.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
@@ -29,7 +29,8 @@ async def main():
         memory = await client.memories.create(
             collection_id=collection["id"],
             content="Customer prefers concise replies",
-            wait_for_index=True,
+            infer=False,  # store verbatim (the SDK default; REST defaults to True)
+            wait_for_index=True,  # return once it is searchable
             idempotency_key="customer-42-preference-v1",
         )
         results = await client.search(
@@ -40,6 +41,51 @@ async def main():
 
 asyncio.run(main())
 ```
+
+> **`memories.create()` and `POST /v1/memories` have different defaults.** The
+> SDK stores the content verbatim as one memory unless you pass `infer=True`;
+> the REST endpoint called without `infer` extracts facts with the server's
+> language model (`infer` defaults to `true` there). Pass `infer` and
+> `wait_for_index` explicitly, as above, so a call reads the same through the
+> SDK and over HTTP. Use `infer=True` (or `/v1/memories/process`) for
+> conversations; `infer=False` for a fact you already have in final form.
+
+## Decide before you invoke your model
+
+A model told to abstain can still answer. Decide in code, and give it only the rows
+that passed. `search()` returns only the rows, so use `search_with_proof()` or
+`reason()`, which keep the fields this reads:
+
+```python
+from hebbrix import answer_context, should_answer
+
+response = await client.search_with_proof(
+    question, user_id="customer-42", include_profile=True
+)
+decision = should_answer(response)
+if not decision:
+    # decision.action: ask_user, say_no_longer_current, say_unknown, retry,
+    # verify_authorization or abstain. decision.reason says why;
+    # decision.context holds the rows, never to answer from.
+    return my_reply_for(decision.action)
+# The user's standing profile plus the rows you may answer from, each with its
+# date, memory type, subject and support.
+return await my_llm(question, context=answer_context(response, decision))
+```
+
+`answer_context(response, decision)` keeps the end user's standing profile
+(`include_profile=True`) beside the rows: preferences such as "keep answers
+short" reach your model even when they did not rank for this message. It lists
+each fact with its category, confidence and date, the topics to avoid, the
+profile's `scope`, and says so when the profile is still being updated
+(`projection.status: "pending"`) or could not be read, so a missing preference
+is not taken as absent. When the decision is not to answer it returns the
+profile alone. `usable_memories(response)` returns just the rows. Pass
+`history=True` for a question about the past, when superseded and historical
+versions should count. `reason()` takes `deadline_ms`; a `timed_out` response is
+an abstention. `verify_authorization` means the returned rule limits the action
+to a group the store cannot place the user in: use the rule, and check the
+permission in your own system.
 
 ## Learn from outcomes in three calls
 
@@ -128,6 +174,7 @@ from hebbrix import IndexingTimeoutError
 try:
     created = await client.memories.create(
         content="Customer prefers concise replies",
+        infer=False,
         wait_for_index=True,
         idempotency_key="customer-42-preference-v1",
         index_timeout=5,

@@ -162,6 +162,6 @@ def test_package_docs_metadata_uses_canonical_host():
     assert 'Documentation = "https://hebbrix.com/docs"' in text
     assert "docs.hebbrix.com" not in text
     readme = (root / "README.md").read_text()
-    assert "pip install hebbrix==2.7.0" in readme
+    assert "pip install hebbrix==2.8.0" in readme
     assert "three calls" in readme
     assert "schema `" not in readme

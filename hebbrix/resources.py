@@ -406,6 +406,14 @@ class MemoriesResource(BaseResource):
         """
         Create a memory.
 
+        **This method stores verbatim by default; the REST endpoint does not.**
+        ``memories.create()`` sends ``infer=False`` unless you pass
+        ``infer=True``, while ``POST /v1/memories`` called over HTTP without
+        ``infer`` extracts facts (``infer`` defaults to ``true`` there). The
+        same content can therefore become one verbatim memory through the SDK
+        and several extracted facts through REST. Pass ``infer`` and
+        ``wait_for_index`` explicitly so the call reads the same either way.
+
         By default (``infer=False``) the content is stored verbatim as a single
         memory and the response's ``results[0].id`` is that memory's real,
         immediately-resolvable id — so ``create()`` round-trips with ``get()``.
@@ -1011,6 +1019,7 @@ def _search_payload(
     include_proof_context: Optional[bool] = None,
     prefer_entity_match: bool = False,
     include_profile: bool = False,
+    include_superseded: bool = False,
 ) -> Dict[str, Any]:
     """Build the identical /v1/search body for sync and async clients.
 
@@ -1046,6 +1055,8 @@ def _search_payload(
         payload["prefer_entity_match"] = True
     if include_profile:
         payload["include_profile"] = True
+    if include_superseded:
+        payload["include_superseded"] = True
     return {key: value for key, value in payload.items() if value is not None}
 
 
@@ -1061,12 +1072,15 @@ def _reason_payload(
     facets: Optional[List[str]] = None,
     view: str = "compact",
     debug: bool = False,
+    deadline_ms: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build the identical /v1/search/reason body for sync and async clients.
 
     ``view`` defaults to ``"compact"``: the answer, abstention fields, cited
     sources and safety envelope are kept and the internal decision
     diagnostics are omitted; ``view="full"`` or ``debug=True`` returns them.
+    ``deadline_ms`` bounds the response's latency; past it the response returns
+    what it has (``reasoning_status``), so set the client timeout above it.
     """
 
     if view not in {"compact", "full"}:
@@ -1084,6 +1098,8 @@ def _reason_payload(
     }
     if debug:
         payload["debug"] = True
+    if deadline_ms is not None:
+        payload["deadline_ms"] = deadline_ms
     return payload
 
 
@@ -1166,14 +1182,19 @@ class SearchResource(BaseResource):
         include_proof_context: Optional[bool] = None,
         prefer_entity_match: bool = False,
         include_profile: bool = False,
+        include_superseded: bool = False,
     ) -> SearchSafetyEnvelope:
         """Search and preserve the automatic ProofLoop context.
 
         The legacy ``search`` method still returns only the result list. Use
         this method when the selected evidence will feed a learned decision,
-        or to read ``profile`` (``include_profile=True``) and
-        ``query_entities``. Responses are compact by default; pass
-        ``view="full"`` or ``debug=True`` for diagnostics.
+        when your own model answers from the rows (``answer_status``,
+        ``abstain_recommended`` and ``indexing`` are here;
+        ``hebbrix.should_answer`` decides from them), or to read ``profile``
+        (``include_profile=True``) and ``query_entities``. Responses are compact
+        by default; pass ``view="full"`` or ``debug=True`` for diagnostics.
+        ``include_superseded=True`` also returns superseded versions, flagged
+        ``low_confidence``, for an audit view.
         """
 
         response = await self.client.post(
@@ -1196,6 +1217,7 @@ class SearchResource(BaseResource):
                 include_proof_context=include_proof_context,
                 prefer_entity_match=prefer_entity_match,
                 include_profile=include_profile,
+                include_superseded=include_superseded,
             ),
         )
         return _canonical_search_envelope(response)
@@ -1234,6 +1256,7 @@ class SearchResource(BaseResource):
         facets: Optional[List[str]] = None,
         view: str = "compact",
         debug: bool = False,
+        deadline_ms: Optional[int] = None,
     ) -> SearchSafetyEnvelope:
         """
         Perform reasoning over memories.
@@ -1249,6 +1272,7 @@ class SearchResource(BaseResource):
             facets: Optional typed decomposition facets
             view: ``"compact"`` (default) or ``"full"`` diagnostics
             debug: Return the full diagnostic response
+            deadline_ms: The response's latency budget, at most the server's
 
         Returns:
             Reasoning result with answer and sources
@@ -1266,6 +1290,7 @@ class SearchResource(BaseResource):
                 facets=facets,
                 view=view,
                 debug=debug,
+                deadline_ms=deadline_ms,
             ),
         )
         return _canonical_search_envelope(response, rows_key="sources")

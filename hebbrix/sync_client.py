@@ -77,6 +77,14 @@ class SyncMemoriesResource:
         index_timeout: float = 60.0,
         index_poll_interval: float = 0.5,
     ) -> Dict[str, Any]:
+        """Create a memory; the synchronous form of ``MemoryClient.memories.create``.
+
+        **Stores verbatim by default; the REST endpoint does not.** This method
+        sends ``infer=False`` unless you pass ``infer=True``, while
+        ``POST /v1/memories`` over HTTP without ``infer`` extracts facts
+        (``infer`` defaults to ``true`` there). Pass ``infer`` and
+        ``wait_for_index`` explicitly.
+        """
         request_kwargs: Dict[str, Any] = {
             "json": _memory_create_payload(
                 collection_id=collection_id,
@@ -585,6 +593,7 @@ class SyncSearchResource:
         include_proof_context: Optional[bool] = None,
         prefer_entity_match: bool = False,
         include_profile: bool = False,
+        include_superseded: bool = False,
     ) -> Dict[str, Any]:
         response = self.client.post(
             "/v1/search",
@@ -606,6 +615,7 @@ class SyncSearchResource:
                 include_proof_context=include_proof_context,
                 prefer_entity_match=prefer_entity_match,
                 include_profile=include_profile,
+                include_superseded=include_superseded,
             ),
         )
         return _canonical_search_envelope(response)
@@ -628,6 +638,7 @@ class SyncSearchResource:
         facets: Optional[List[str]] = None,
         view: str = "compact",
         debug: bool = False,
+        deadline_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
         response = self.client.post(
             "/v1/search/reason",
@@ -642,6 +653,7 @@ class SyncSearchResource:
                 facets=facets,
                 view=view,
                 debug=debug,
+                deadline_ms=deadline_ms,
             ),
         )
         return _canonical_search_envelope(response, rows_key="sources")
@@ -1132,7 +1144,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.7.0",
+            "User-Agent": "hebbrix-python/2.8.0",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

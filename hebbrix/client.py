@@ -93,7 +93,7 @@ class MemoryClient:
         """Get request headers."""
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.7.0",
+            "User-Agent": "hebbrix-python/2.8.0",
         }
 
         if self.api_key:
@@ -302,8 +302,12 @@ class MemoryClient:
         group_by_source: bool = True,
         debug: bool = False,
         view: Optional[str] = None,
+        include_superseded: bool = False,
+        include_profile: bool = False,
     ) -> Dict[str, Any]:
-        """Search and return both results and the automatic ProofLoop context."""
+        """Search and return the response's rows, its abstention fields
+        (``answer_status``, ``abstain_recommended``: ``hebbrix.should_answer``
+        decides from them) and the automatic ProofLoop context."""
 
         return await self.search_resource.search_with_proof(
             query=query,
@@ -320,6 +324,8 @@ class MemoryClient:
             group_by_source=group_by_source,
             debug=debug,
             view=view,
+            include_superseded=include_superseded,
+            include_profile=include_profile,
         )
 
     async def reason(
@@ -334,6 +340,7 @@ class MemoryClient:
         facets: Optional[List[str]] = None,
         view: str = "compact",
         debug: bool = False,
+        deadline_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Perform reasoning over memories.
@@ -349,6 +356,7 @@ class MemoryClient:
             facets: Optional typed decomposition facets
             view: ``"compact"`` (default) or ``"full"`` diagnostics
             debug: Return the full diagnostic response
+            deadline_ms: The response's latency budget, at most the server's
 
         Returns:
             Reasoning result with answer and sources
@@ -364,6 +372,7 @@ class MemoryClient:
             facets=facets,
             view=view,
             debug=debug,
+            deadline_ms=deadline_ms,
         )
 
     async def close(self):
