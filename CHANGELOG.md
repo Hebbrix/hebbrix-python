@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.9.0 — 2026-11-11 (high-stakes readiness, history and suggestions)
+
+- `should_answer(response, require_ready=True)` (also on `usable_memories` and `answer_context`): for high-stakes flows, holds the answer with action `retry` and reason `index_not_ready` until `indexing.status` is `ready` and `indexing.answer_risk` is `none`. A response that does not report its indexing is not ready.
+- Behaviour change: `history=True` now applies only when the server answered or marked the response `superseded`; it no longer overrides `unverified`, `no_relevant_memory` or `indexing`.
+- A Reason result for a suggestion or plan (`grounding.answerability: "context_only"`) returns action `use_as_context` with its memories in `context`; `answer_context` lists them as context that is neither an established fact nor permission to act.
+- `answer_context` says when recent writes could not be reflected in the profile (`projection.status: "failed"`, server 1.4.25).
+
 ## 2.8.0 — 2026-11-11 (answer decisions and answer context)
 
 - New `hebbrix.should_answer(response)`: decides in code whether a `search_with_proof()` or `reason()` response may be answered from, returning an `AnswerDecision` with `action` (`answer`, `say_unknown`, `abstain`, `verify_authorization`, `ask_user`, `retry` or `say_no_longer_current`), `reason`, the usable `memories` and the `context` rows never to answer from. `history=True` counts superseded and historical versions for questions about the past.

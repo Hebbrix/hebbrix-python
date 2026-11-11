@@ -119,6 +119,29 @@ def test_a_profile_still_being_projected_says_so():
     )
 
 
+def test_a_profile_whose_writes_failed_to_project_says_it_is_incomplete():
+    failed = {
+        **PROFILE,
+        "facts": [],
+        "avoid_topics": [],
+        "projection": {
+            "status": "failed",
+            "pending_writes": 0,
+            "failed_writes": 2,
+            "capped": False,
+            "failure": {"reason": "profile_extraction_failed", "retryable": True},
+            "retry_after_seconds": None,
+        },
+    }
+    context = answer_context(search([], failed, answer_status="no_relevant_memory"))
+    assert context == (
+        "Standing profile of this user (applies to every reply; collection_id c-1; "
+        "end_user_id user-42; as of 2026-11-08; projection failed):\n"
+        "- incomplete: 2 recent writes could not be reflected; a fact from them may "
+        "be missing."
+    )
+
+
 def test_an_unavailable_profile_is_not_presented_as_empty():
     context = answer_context(
         search([ALLERGY], {"status": "unavailable", "facts": [], "count": 0})
@@ -170,3 +193,18 @@ def test_reason_sources_render_too():
         "[1] (fact; saved 2026-11-02; current)",
         "The user is allergic to peanuts.",
     ]
+
+
+def test_a_suggestion_lists_its_context_as_neither_fact_nor_permission():
+    from hebbrix import answer_context
+
+    page = {
+        "answer": None,
+        "sources": [{"memory_id": "m1", "content": "The user owns a Fuji X-T5."}],
+        "decision_abstained": True,
+        "answer_status": "unverified",
+        "grounding": {"status": "supported", "answerability": "context_only"},
+    }
+    text = answer_context(page)
+    assert "The user owns a Fuji X-T5." in text
+    assert "not established facts" in text and "never permission" in text

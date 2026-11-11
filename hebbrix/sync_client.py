@@ -1144,7 +1144,7 @@ class SyncMemoryClient:
         self.source = source or os.getenv("HEBBRIX_SOURCE")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hebbrix-python/2.8.0",
+            "User-Agent": "hebbrix-python/2.9.0",
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

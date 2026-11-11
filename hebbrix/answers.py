@@ -49,6 +49,15 @@ ACTIONS = {
 # the rule is in ``context``; check the asker's role in your own system.
 AUTHORIZATION_NOT_VERIFIABLE = "authorization_not_verifiable"
 VERIFY_AUTHORIZATION = "verify_authorization"
+# A Reason request for a suggestion or plan ("Can you suggest accessories for my
+# camera?") has no stored answer: its sources are the memories that should shape
+# what your model composes (``grounding.answerability`` "context_only"). They are
+# context, never a verified fact or a permission.
+CONTEXT_ONLY = "context_only"
+USE_AS_CONTEXT = "use_as_context"
+# ``require_ready``: the scope's index is not complete, or the server says the
+# answer may still change (``indexing.answer_risk``).
+INDEX_NOT_READY = "index_not_ready"
 # Set by the SDK on a response whose rows it kept although it is degraded: not a
 # malformed envelope, so it is not a reason to fail closed on its own.
 _PRESERVED = "degraded_evidence_preserved"
@@ -105,17 +114,51 @@ def _is_history(row: Mapping[str, Any], *, search_row: bool) -> bool:
     )
 
 
+def _ready(response: Mapping[str, Any]) -> bool:
+    """Whether the response says its scope is fully indexed with nothing that
+    could change the answer. A response that does not say is not ready."""
+
+    indexing = response.get("indexing")
+    if not isinstance(indexing, Mapping):
+        return False
+    return indexing.get("status") == "ready" and indexing.get("answer_risk") in (
+        None,
+        "none",
+    )
+
+
 def should_answer(
-    response: Optional[Mapping[str, Any]], *, history: bool = False
+    response: Optional[Mapping[str, Any]],
+    *,
+    history: bool = False,
+    require_ready: bool = False,
 ) -> AnswerDecision:
     """Whether you may answer from ``response`` (a ``search_with_proof`` or
     ``reason`` result), the rows to answer from, and what to do when you may not.
 
+    Every server signal is enforced: ``answer_status``, ``no_match``,
+    ``abstain_recommended``, ``decision_abstained``, ``confidence_reason`` and
+    each row's ``low_confidence`` and ``revision_status``.
+
+    ``require_ready=True`` is for high-stakes flows (money, health, actions):
+    the answer is also held, with action ``retry``, until ``indexing.status`` is
+    ``ready`` and ``indexing.answer_risk`` is ``none``. Without it an answer
+    from a scope still indexing is allowed when the server allows it
+    (``answer_risk`` ``may_change``), and a count, total or list is always held
+    while indexing (``answer_status`` ``indexing``).
+
     ``history=True`` is for a question about the past that your application
-    recognises ("Where did I live before?"): superseded and historical rows then
-    count, whatever the response says of the present. Keep each row's
-    ``revision_status`` and ``stated_at`` in what you pass to the model, so it can
-    tell the versions apart. Conflicting rows never count.
+    recognises ("Where did I live before?"). It overrides one thing: a
+    superseded or historical row then counts as evidence, so a response the
+    server answered or marked ``superseded`` can be answered from its earlier
+    versions. It never overrides ``unverified``, ``no_relevant_memory``,
+    ``indexing``, ``conflicting`` or ``authorization_not_verifiable``. Keep each
+    row's ``revision_status`` and ``stated_at`` in what you pass to the model, so
+    it can tell the versions apart.
+
+    A Reason result for a suggestion or plan (``context_only``) returns action
+    ``use_as_context``: give ``decision.context`` to your model to shape what it
+    suggests, never as an established fact or a permission to act.
     """
 
     if not isinstance(response, Mapping) or "answer_status" not in response:
@@ -135,7 +178,12 @@ def should_answer(
         return declined(status, ACTIONS[status])
     if response.get("confidence_reason") == AUTHORIZATION_NOT_VERIFIABLE:
         return declined(AUTHORIZATION_NOT_VERIFIABLE, VERIFY_AUTHORIZATION)
-    if history:
+    grounding = response.get("grounding")
+    if isinstance(grounding, Mapping) and grounding.get("answerability") == CONTEXT_ONLY:
+        return declined(CONTEXT_ONLY, USE_AS_CONTEXT)
+    if require_ready and not _ready(response):
+        return declined(INDEX_NOT_READY, "retry")
+    if history and status in ("answerable", "superseded"):
         usable = [row for row in rows if _is_history(row, search_row=search_rows)]
         if usable:
             others = [row for row in rows if row not in usable]
@@ -153,12 +201,17 @@ def should_answer(
 
 
 def usable_memories(
-    response: Optional[Mapping[str, Any]], *, history: bool = False
+    response: Optional[Mapping[str, Any]],
+    *,
+    history: bool = False,
+    require_ready: bool = False,
 ) -> List[Dict[str, Any]]:
     """The rows of ``response`` safe to pass to a model as evidence; empty when
     ``should_answer`` says not to answer."""
 
-    return should_answer(response, history=history).memories
+    return should_answer(
+        response, history=history, require_ready=require_ready
+    ).memories
 
 
 def _day(value: Any) -> Optional[str]:
@@ -189,7 +242,8 @@ def _profile_lines(profile: Any) -> List[str]:
     projection = profile.get("projection")
     projection = projection if isinstance(projection, Mapping) else {}
     pending = projection.get("status") == "pending"
-    if not facts and not avoid and not pending:
+    failed = projection.get("status") == "failed"
+    if not facts and not avoid and not pending and not failed:
         return []
     scope = profile.get("scope")
     scope = (
@@ -225,6 +279,17 @@ def _profile_lines(profile: Any) -> List[str]:
         lines.append(
             f"- still being updated: {writes} not yet reflected; a fact here may be "
             "missing or about to change."
+        )
+    elif failed:
+        count = projection.get("failed_writes")
+        writes = (
+            f"{count} recent writes"
+            if isinstance(count, int) and count > 0
+            else "recent writes"
+        )
+        lines.append(
+            f"- incomplete: {writes} could not be reflected; a fact from them may be "
+            "missing."
         )
     return lines
 
@@ -276,6 +341,7 @@ def answer_context(
     decision: Optional[AnswerDecision] = None,
     *,
     history: bool = False,
+    require_ready: bool = False,
 ) -> str:
     """The text to give your own model with the user's message: the end user's
     standing profile and the memories ``should_answer`` lets you answer from.
@@ -290,11 +356,16 @@ def answer_context(
     memory type, date, whom it is about, the names it states, its revision
     status and its support. When the decision is not to answer, only the
     profile is returned: standing preferences still shape a reply such as
-    "I don't know that yet". Returns "" when there is nothing to add.
+    "I don't know that yet". For a Reason suggestion or plan (``context_only``)
+    the memories that should shape it are listed as context, marked as neither
+    established facts nor permission to act. Returns "" when there is nothing to
+    add.
     """
 
     if decision is None:
-        decision = should_answer(response, history=history)
+        decision = should_answer(
+            response, history=history, require_ready=require_ready
+        )
     sections = []
     profile = _profile_lines(
         response.get("profile") if isinstance(response, Mapping) else None
@@ -309,6 +380,16 @@ def answer_context(
         )
         lines = [heading]
         for index, row in enumerate(decision.memories, start=1):
+            details = _memory_details(row)
+            lines.append(f"[{index}]" + (f" ({'; '.join(details)})" if details else ""))
+            lines.append(str(row.get("content") or ""))
+        sections.append("\n".join(lines))
+    elif decision.reason == CONTEXT_ONLY and decision.context:
+        lines = [
+            "Memories that should shape the suggestion (context: not established "
+            "facts, and never permission to act):"
+        ]
+        for index, row in enumerate(decision.context, start=1):
             details = _memory_details(row)
             lines.append(f"[{index}]" + (f" ({'; '.join(details)})" if details else ""))
             lines.append(str(row.get("content") or ""))

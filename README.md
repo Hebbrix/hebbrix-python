@@ -2,14 +2,14 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-The current stable package is **2.8.0**. Start with memory storage and search, or
+The current stable package is **2.9.0**. Start with memory storage and search, or
 the three-call outcome-learning workflow below. Advanced evidence and execution
 permission transports are opt-in; installing the SDK never permits an action.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.8.0
+pip install hebbrix==2.9.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
@@ -82,8 +82,13 @@ profile's `scope`, and says so when the profile is still being updated
 is not taken as absent. When the decision is not to answer it returns the
 profile alone. `usable_memories(response)` returns just the rows. Pass
 `history=True` for a question about the past, when superseded and historical
-versions should count. `reason()` takes `deadline_ms`; a `timed_out` response is
-an abstention. `verify_authorization` means the returned rule limits the action
+versions should count (it never overrides `unverified`, `no_relevant_memory`,
+`indexing` or `conflicting`). Pass `require_ready=True` for a high-stakes flow:
+the answer is then also held, with action `retry`, until `indexing.status` is
+`ready` and `indexing.answer_risk` is `none`. A Reason suggestion or plan
+(`context_only`) returns action `use_as_context`: its memories shape what your
+model suggests, and are never a fact or a permission. `reason()` takes
+`deadline_ms`; a `timed_out` response is an abstention. `verify_authorization` means the returned rule limits the action
 to a group the store cannot place the user in: use the rule, and check the
 permission in your own system.
 

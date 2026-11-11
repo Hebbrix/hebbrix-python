@@ -383,3 +383,44 @@ def test_an_unverified_permission_is_its_own_action_with_the_rule_as_context():
 def test_the_authorization_reason_is_the_apis():
     text = SCHEMAS["SearchResponse"]["properties"]["confidence_reason"]["description"]
     assert "authorization_not_verifiable" in text
+
+
+def test_history_never_overrides_an_unverified_response():
+    # The server could not establish any row: earlier versions among them are
+    # not evidence for the past either.
+    rows = [row("old", is_current=False, revision_status="historical", low_confidence=True)]
+    page = search(rows, answer_status="unverified", abstain_recommended=True)
+    decision = should_answer(page, history=True)
+    assert not decision
+    assert decision.action == "abstain"
+    assert ids(decision.context) == ["old"]
+
+
+def test_a_high_stakes_answer_waits_for_a_ready_index():
+    ready = {"status": "ready", "answer_risk": "none"}
+    assert should_answer(search(indexing=ready), require_ready=True)
+    for indexing in (
+        {"status": "incomplete", "answer_risk": "may_change"},
+        {"status": "ready", "answer_risk": "may_change"},
+        None,
+    ):
+        decision = should_answer(search(indexing=indexing), require_ready=True)
+        assert not decision
+        assert decision.action == "retry"
+        assert decision.reason == "index_not_ready"
+    # Without it, a response the server lets answer while indexing answers.
+    assert should_answer(search(indexing={"status": "incomplete", "answer_risk": "may_change"}))
+
+
+def test_a_suggestion_is_context_to_shape_never_an_answer():
+    page = reason(
+        [source("camera")],
+        answer=None,
+        decision_abstained=True,
+        grounding={"status": "supported", "answerability": "context_only"},
+    )
+    decision = should_answer(page)
+    assert not decision
+    assert decision.action == "use_as_context"
+    assert decision.memories == []
+    assert ids(decision.context) == ["camera"]
