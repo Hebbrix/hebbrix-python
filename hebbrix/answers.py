@@ -32,6 +32,7 @@ ANSWER_STATUSES = (
     "unverified",
     "indexing",
     "no_relevant_memory",
+    "unavailable",
 )
 REVISION_STATUSES = ("current", "superseded", "conflicting", "historical")
 
@@ -43,6 +44,9 @@ ACTIONS = {
     "unverified": "abstain",
     "indexing": "retry",
     "no_relevant_memory": "say_unknown",
+    # A service the evidence depends on failed for this request: retry, and
+    # never tell the user the fact is absent.
+    "unavailable": "retry",
 }
 # A permission question answered by a rule that restricts the act to a group no
 # memory ties the asker to (``confidence_reason`` "authorization_not_verifiable"):
@@ -199,7 +203,10 @@ def should_answer(
     if response.get("confidence_reason") == AUTHORIZATION_NOT_VERIFIABLE:
         return declined(AUTHORIZATION_NOT_VERIFIABLE, VERIFY_AUTHORIZATION)
     grounding = response.get("grounding")
-    if isinstance(grounding, Mapping) and grounding.get("answerability") == CONTEXT_ONLY:
+    if (
+        isinstance(grounding, Mapping)
+        and grounding.get("answerability") == CONTEXT_ONLY
+    ):
         return declined(CONTEXT_ONLY, USE_AS_CONTEXT)
     if require_ready and not _ready(response):
         return declined(INDEX_NOT_READY, "retry")
@@ -399,9 +406,7 @@ def answer_context(
     """
 
     if decision is None:
-        decision = should_answer(
-            response, history=history, require_ready=require_ready
-        )
+        decision = should_answer(response, history=history, require_ready=require_ready)
     sections = []
     profile = _profile_lines(
         response.get("profile") if isinstance(response, Mapping) else None

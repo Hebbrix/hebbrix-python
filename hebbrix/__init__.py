@@ -5,7 +5,7 @@ production OpenAPI and ``GET /v1/users/me/capabilities``. The experimental
 World Model is intentionally absent from this release.
 """
 
-__version__ = "2.10.0"
+__version__ = "2.11.0"
 __author__ = "Hebbrix Team"
 __license__ = "MIT"
 
@@ -29,6 +29,7 @@ from hebbrix.exceptions import (
 )
 from hebbrix.models import (
     ActionAdviceReceipt,
+    AnswerFinality,
     AnswerStatus,
     EvidenceClaim,
     GroundingReceipt,
@@ -57,6 +58,7 @@ __all__ = [
     "SearchSafetyEnvelope",
     "ActionAdviceReceipt",
     "AnswerDecision",
+    "AnswerFinality",
     "AnswerStatus",
     "MemoryRow",
     "MemoryStatus",

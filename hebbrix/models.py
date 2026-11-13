@@ -44,6 +44,10 @@ AnswerStatus = Literal[
     "indexing",
     "no_relevant_memory",
 ]
+# Whether an answerable response covers its whole scope: final (every
+# memory accepted for the scope was indexed), provisional (answerable from what
+# is indexed now; a pending memory may change it) or none (nothing to act on).
+AnswerFinality = Literal["final", "provisional", "none"]
 RevisionStatus = Literal["current", "superseded", "conflicting", "historical"]
 
 
@@ -113,6 +117,9 @@ class SearchSafetyEnvelope(TypedDict, total=False):
     abstain_recommended: bool
     # What this response lets a caller do, in one value.
     answer_status: AnswerStatus
+    # final, provisional or none: act on a final answer only when a decision
+    # must cover the whole scope (agents, side effects).
+    answer_finality: AnswerFinality
     indexing: Optional[ScopeIndexing]
     confidence_reason: Optional[str]
     # /v1/search/reason: decision_abstained is true exactly when answer is null.

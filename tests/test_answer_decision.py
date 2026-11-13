@@ -510,3 +510,10 @@ def test_a_rule_never_answers_an_authorization_question():
     decision = should_answer(page)
     assert not decision
     assert decision.reason == "authorization_not_verifiable"
+
+
+def test_a_failed_service_is_retried_never_reported_absent():
+    decision = should_answer(search([], answer_status="unavailable"))
+    assert decision.answer is False
+    assert decision.reason == "unavailable"
+    assert decision.action == "retry"

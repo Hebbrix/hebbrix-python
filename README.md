@@ -2,14 +2,14 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-The current stable package is **2.10.0**. Start with memory storage and search, or
+The current stable package is **2.11.0**. Start with memory storage and search, or
 the three-call outcome-learning workflow below. Advanced evidence and execution
 permission transports are opt-in; installing the SDK never permits an action.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.10.0
+pip install hebbrix==2.11.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`

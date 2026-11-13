@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.11.0 — 2026-11-13 (service failures, answer finality)
+
+- `answer_status` `"unavailable"` (server 1.4.30): a service the evidence depends on failed for this request and nothing answers. `should_answer` declines it with action `retry`; never tell the user the fact is absent. Earlier versions declined it as `malformed_response`.
+- Types: search and Reason responses gain `answer_finality` (`final`, `provisional`, `none`): whether an answerable response covers the whole scope (index ready) or only the evidence indexed so far. An agent acting on an answer, or any action with side effects, waits for `final`.
+
 ## 2.10.0 — 2026-11-12 (applicable rules, consistent abstention flags)
 
 - An `unverified` search response whose rows include `evidence_role: "applicable_rule"` (server 1.4.27) returns reason `applicable_rule` and action `use_as_context`, those rules first in `decision.context`: policy that speaks to the asked case but that the API has not verified decides it. Let your model apply it, or call `reason`. A rule is never an authorization; `authorization_not_verifiable` still comes first.
