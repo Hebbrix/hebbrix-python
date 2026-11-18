@@ -2,14 +2,14 @@
 
 Typed Python client for Hebbrix memory, retrieval, and outcome-learning APIs.
 
-The current stable package is **2.11.0**. Start with memory storage and search, or
+The current stable package is **2.12.0**. Start with memory storage and search, or
 the three-call outcome-learning workflow below. Advanced evidence and execution
 permission transports are opt-in; installing the SDK never permits an action.
 
 ## Install
 
 ```bash
-pip install hebbrix==2.11.0
+pip install hebbrix==2.12.0
 ```
 
 Python 3.8+ is supported. `MemoryClient` is asynchronous. `SyncMemoryClient`
@@ -69,7 +69,8 @@ if not decision:
     # decision.context holds the rows, never to answer from.
     return my_reply_for(decision.action)
 # The user's standing profile plus the rows you may answer from, each with its
-# date, memory type, subject and support.
+# date, memory type, subject, what it is about, the values it requires or
+# gives, any conflict with the task, and its support.
 return await my_llm(question, context=answer_context(response, decision))
 ```
 
@@ -79,7 +80,12 @@ short" reach your model even when they did not rank for this message. It lists
 each fact with its category, confidence and date, the topics to avoid, the
 profile's `scope`, and says so when the profile is still being updated
 (`projection.status: "pending"`) or could not be read, so a missing preference
-is not taken as absent. When the decision is not to answer it returns the
+is not taken as absent. Each row says what the memory is about (`applies_to`:
+`about: Acme, order 5531`) and the codes it requires or gives (`values`:
+`requires or gives: EXP-7`). When the task names a different value of the same
+kind than one the memory requires (`value_conflicts`), a line before the
+memory's text says so: `Conflicts with the task: task says EXP-9, memory
+requires EXP-7.` When the decision is not to answer it returns the
 profile alone. `usable_memories(response)` returns just the rows. Pass
 `history=True` for a question about the past, when superseded and historical
 versions should count (it never overrides `unverified`, `no_relevant_memory`,

@@ -51,6 +51,17 @@ AnswerFinality = Literal["final", "provisional", "none"]
 RevisionStatus = Literal["current", "superseded", "conflicting", "historical"]
 
 
+class ValueConflict(TypedDict, total=False):
+    """A value a memory requires where the query or task names a different
+    value of the same kind (server 1.4.46): the rule requires customs form
+    ``EXP-7`` and the task says ``EXP-9``."""
+
+    # The value the memory requires.
+    value: str
+    # The value of the same kind the query or task names instead.
+    query_value: str
+
+
 class MemoryRow(TypedDict, total=False):
     """One search row or Reason source, with its standing among the versions of
     what it states. Decide what to do with a response in code:
@@ -75,6 +86,19 @@ class MemoryRow(TypedDict, total=False):
     stated_at: Optional[str]
     replaced_values: Optional[List[str]]
     currency_basis: Optional[Literal["revision", "later_memory"]]
+    # What the memory is about: the names and record identifiers it names
+    # (customers, people, orders, tickets, campaigns).
+    applies_to: List[str]
+    # match, partial, mismatch, unscoped, or not_applicable when the query
+    # names no entity.
+    entity_match: Optional[str]
+    # Codes the memory gives as values (server 1.4.45): a field's value
+    # (customs_form='EXP-7') or a code a rule requires ("need customs form
+    # EXP-7"). A value never scopes a memory away from the task.
+    values: List[str]
+    # Each value the memory requires where the query or task names a different
+    # value of the same kind (server 1.4.46).
+    value_conflicts: List[ValueConflict]
 
 
 class ScopeIndexing(TypedDict, total=False):
@@ -137,7 +161,8 @@ class SearchSafetyEnvelope(TypedDict, total=False):
     degraded: bool
     sdk_safety_reason: str
     proof_context: Dict[str, Any]
-    # Entities the query names; each row carries applies_to/entity_match.
+    # Entities the query names; each row carries applies_to/entity_match,
+    # and values/value_conflicts on servers that send them.
     query_entities: List[str]
     # Standing profile facts and preferences (search include_profile=True).
     profile: Dict[str, Any]

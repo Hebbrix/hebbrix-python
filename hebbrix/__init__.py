@@ -5,7 +5,7 @@ production OpenAPI and ``GET /v1/users/me/capabilities``. The experimental
 World Model is intentionally absent from this release.
 """
 
-__version__ = "2.11.0"
+__version__ = "2.12.0"
 __author__ = "Hebbrix Team"
 __license__ = "MIT"
 
@@ -38,6 +38,7 @@ from hebbrix.models import (
     RevisionStatus,
     ScopeIndexing,
     SearchSafetyEnvelope,
+    ValueConflict,
 )
 from hebbrix.sync_client import SyncMemoryClient
 
@@ -64,6 +65,7 @@ __all__ = [
     "MemoryStatus",
     "RevisionStatus",
     "ScopeIndexing",
+    "ValueConflict",
     "answer_context",
     "should_answer",
     "usable_memories",

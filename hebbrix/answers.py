@@ -337,6 +337,56 @@ def _profile_lines(profile: Any) -> List[str]:
     return lines
 
 
+def _strings(value: Any) -> List[str]:
+    """The non-empty strings of a list field; [] when an older API omits it."""
+
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
+
+
+def _code(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _conflict_lines(row: Mapping[str, Any]) -> List[str]:
+    """One plain line per ``value_conflicts`` entry: the task names a different
+    value of the same kind than one the memory requires. A side the server did
+    not send is not a reason to drop the warning."""
+
+    conflicts = row.get("value_conflicts")
+    lines: List[str] = []
+    for conflict in conflicts if isinstance(conflicts, list) else []:
+        if not isinstance(conflict, Mapping):
+            continue
+        required = _code(conflict.get("value"))
+        asked = _code(conflict.get("query_value"))
+        if not required and not asked:
+            continue
+        line = (
+            f"Conflicts with the task: task says {asked or 'a different value'}, "
+            f"memory requires {required or 'a different value'}."
+        )
+        if line not in lines:
+            lines.append(line)
+    return lines
+
+
+def _memory_lines(index: int, row: Mapping[str, Any]) -> List[str]:
+    """A numbered memory: its details, any conflict with the task, its text."""
+
+    details = _memory_details(row)
+    return [
+        f"[{index}]" + (f" ({'; '.join(details)})" if details else ""),
+        *_conflict_lines(row),
+        str(row.get("content") or ""),
+    ]
+
+
 def _memory_details(row: Mapping[str, Any]) -> List[str]:
     metadata = row.get("metadata") if isinstance(row.get("metadata"), Mapping) else {}
     details = []
@@ -351,14 +401,15 @@ def _memory_details(row: Mapping[str, Any]) -> List[str]:
         details.append(f"valid until {_day(row.get('valid_until'))}")
     if row.get("subject"):
         details.append(f"about {row['subject']}")
-    applies_to = row.get("applies_to")
-    names = (
-        [n for n in applies_to if isinstance(n, str) and n]
-        if isinstance(applies_to, list)
-        else []
-    )
-    if names:
-        details.append("names " + ", ".join(names))
+    values = _strings(row.get("values"))
+    # A code the memory gives as a value says what it requires or gives, not
+    # what it is about: shown once, as a value.
+    given = {value.casefold() for value in values}
+    about = [n for n in _strings(row.get("applies_to")) if n.casefold() not in given]
+    if about:
+        details.append("about: " + ", ".join(about))
+    if values:
+        details.append("requires or gives: " + ", ".join(values))
     if row.get("revision_status"):
         details.append(str(row["revision_status"]))
     grounding = row.get("grounding")
@@ -396,9 +447,13 @@ def answer_context(
     it is still being projected from recent writes; an unavailable profile is
     said to be unavailable, never left out as if empty. The memories section
     lists only ``decision.memories``, numbered for citation, each with its
-    memory type, date, whom it is about, the names it states, its revision
-    status and its support. When the decision is not to answer, only the
-    profile is returned: standing preferences still shape a reply such as
+    memory type, date, whose fact it is, what it is about (``applies_to``:
+    "about: Acme, order 5531"), the values it requires or gives (``values``:
+    "requires or gives: EXP-7"), its revision status and its support. Each
+    ``value_conflicts`` entry is stated on its own line before the memory's
+    text ("Conflicts with the task: task says EXP-9, memory requires EXP-7.").
+    When the decision is not to answer, only the profile is returned:
+    standing preferences still shape a reply such as
     "I don't know that yet". For a Reason suggestion or plan (``context_only``)
     the memories that should shape it are listed as context, marked as neither
     established facts nor permission to act. Returns "" when there is nothing to
@@ -421,9 +476,7 @@ def answer_context(
         )
         lines = [heading]
         for index, row in enumerate(decision.memories, start=1):
-            details = _memory_details(row)
-            lines.append(f"[{index}]" + (f" ({'; '.join(details)})" if details else ""))
-            lines.append(str(row.get("content") or ""))
+            lines.extend(_memory_lines(index, row))
         sections.append("\n".join(lines))
     elif decision.reason == CONTEXT_ONLY and decision.context:
         lines = [
@@ -431,8 +484,6 @@ def answer_context(
             "facts, and never permission to act):"
         ]
         for index, row in enumerate(decision.context, start=1):
-            details = _memory_details(row)
-            lines.append(f"[{index}]" + (f" ({'; '.join(details)})" if details else ""))
-            lines.append(str(row.get("content") or ""))
+            lines.extend(_memory_lines(index, row))
         sections.append("\n".join(lines))
     return "\n\n".join(sections)

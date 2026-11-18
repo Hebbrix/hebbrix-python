@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.12.0 — 2026-11-18 (values and value conflicts)
+
+- Types: search rows (`MemoryRow`) gain `values` (server 1.4.45) and `value_conflicts` (server 1.4.46), and now also type `applies_to` and `entity_match`. `values` lists the codes a memory gives as values: a field's value (`customs_form='EXP-7'`) or a code a rule requires ("need customs form EXP-7"); a value never scopes a memory away from the task. `value_conflicts` lists `{"value", "query_value"}` objects (new type `ValueConflict`), set when the query or task names a different value of the same kind than one the memory requires. Both are optional: rows from older servers omit them, and unknown keys are kept as before.
+- Behaviour change: `answer_context` renders `applies_to` as what the memory is about (`about: Acme, order 5531`) instead of `names …`, so a rule's required code no longer reads as a name; it renders `values` as `requires or gives: EXP-7` (a code listed in both appears once, as a value), and states each value conflict on its own line before the memory's text: `Conflicts with the task: task says EXP-9, memory requires EXP-7.` A row without `values` or `value_conflicts` renders exactly as in 2.11.0 apart from `about:` replacing `names`.
+
 ## 2.11.0 — 2026-11-13 (service failures, answer finality)
 
 - `answer_status` `"unavailable"` (server 1.4.30): a service the evidence depends on failed for this request and nothing answers. `should_answer` declines it with action `retry`; never tell the user the fact is absent. Earlier versions declined it as `malformed_response`.
